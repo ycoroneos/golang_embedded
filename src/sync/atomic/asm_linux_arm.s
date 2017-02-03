@@ -24,7 +24,34 @@
 // http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commit;h=b49c0f24cf6744a3f4fd09289fe7cade349dead5
 //
 TEXT cas<>(SB),NOSPLIT,$0
-	MOVW	$0xffff0fc0, R15
+casl:
+  LDREX (R2), R3
+  CMP R3, R0
+  BNE casfail
+
+  MOVB	runtime·goarm(SB), R11
+	CMP	$7, R11
+	BLT	2(PC)
+	WORD	$0xf57ff05a	// dmb ishst
+
+  STREX R1, (R2), R3
+  CMP $0, R3
+  BNE casl
+  MOVW $1, R3
+
+  MOVB	runtime·goarm(SB), R11
+	CMP	$7, R11
+	BLT	2(PC)
+	WORD	$0xf57ff05b	// dmb ish
+
+  MOVW R3, R0
+  CMP $0, R0
+  RET
+  casfail:
+  MOVW $0, R0
+  CMP $0, R0
+  RET
+
 
 TEXT ·CompareAndSwapInt32(SB),NOSPLIT,$0
 	B	·CompareAndSwapUint32(SB)

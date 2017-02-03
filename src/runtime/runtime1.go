@@ -68,6 +68,9 @@ func goargs() {
 	if GOOS == "windows" {
 		return
 	}
+	if Armhackmode > 0 {
+		return
+	}
 	argslice = make([]string, argc)
 	for i := int32(0); i < argc; i++ {
 		argslice[i] = gostringnocopy(argv_index(argv, i))

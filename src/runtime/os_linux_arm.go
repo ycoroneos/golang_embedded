@@ -18,6 +18,11 @@ var armArch uint8 = 6 // we default to ARMv6
 var hwcap uint32      // set by setup_auxv
 
 func checkgoarm() {
+	if Armhackmode > 0 {
+		print("detected Biscuit hackmode, FPU exists on armv7a\n")
+		goarm = 7
+		return
+	}
 	// On Android, /proc/self/auxv might be unreadable and hwcap won't
 	// reflect the CPU capabilities. Assume that every Android arm device
 	// has the necessary floating point hardware available.
