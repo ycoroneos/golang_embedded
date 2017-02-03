@@ -240,16 +240,6 @@ func Gosched() {
 	mcall(gosched_m)
 }
 
-var alwaysFalse bool
-
-// goschedguarded does nothing, but is written in a way that guarantees a preemption check in its prologue.
-// Calls to this function are inserted by the compiler in otherwise uninterruptible loops (see insertLoopReschedChecks).
-func goschedguarded() {
-	if alwaysFalse {
-		goschedguarded()
-	}
-}
-
 // Puts the current goroutine into a waiting state and calls unlockf.
 // If unlockf returns false, the goroutine is resumed.
 // unlockf must not access this G's stack, as it may be moved between
@@ -944,6 +934,9 @@ func stopTheWorld(reason string) {
 	semacquire(&worldsema, 0)
 	getg().m.preemptoff = reason
 	systemstack(stopTheWorldWithSema)
+	if Armhackmode > 0 {
+		write_uart([]byte("world is stopped\n"))
+	}
 }
 
 // startTheWorld undoes the effects of stopTheWorld.
@@ -953,6 +946,9 @@ func startTheWorld() {
 	// gomaxprocs cannot change while worldsema is held.
 	semrelease(&worldsema)
 	getg().m.preemptoff = ""
+	if Armhackmode > 0 {
+		write_uart([]byte("world is started\n"))
+	}
 }
 
 // Holding worldsema grants an M the right to try to stop the world
@@ -2173,6 +2169,8 @@ func schedule() {
 	_g_ := getg()
 
 	if _g_.m.locks != 0 {
+		print("schedule: holding locks")
+		brk()
 		throw("schedule: holding locks")
 	}
 
@@ -3078,6 +3076,7 @@ func gfpurge(_p_ *p) {
 
 // Breakpoint executes a breakpoint trap.
 func Breakpoint() {
+	throw("breakpoint")
 	breakpoint()
 }
 
