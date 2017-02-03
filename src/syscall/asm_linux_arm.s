@@ -14,7 +14,7 @@
 // func Syscall(syscall uintptr, a1, a2, a3 uintptr) (r1, r2, err uintptr);
 
 TEXT	·Syscall(SB),NOSPLIT,$0-28
-	BL		runtime·entersyscall(SB)
+//	BL		runtime·entersyscall(SB)
 	MOVW	trap+0(FP), R7
 	MOVW	a1+4(FP), R0
 	MOVW	a2+8(FP), R1
@@ -22,7 +22,7 @@ TEXT	·Syscall(SB),NOSPLIT,$0-28
 	MOVW	$0, R3
 	MOVW	$0, R4
 	MOVW	$0, R5
-	SWI		$0
+	CALL runtime·trap_debug(SB)
 	MOVW	$0xfffff001, R1
 	CMP		R1, R0
 	BLS		ok
@@ -32,20 +32,20 @@ TEXT	·Syscall(SB),NOSPLIT,$0-28
 	MOVW	R2, r2+20(FP)
 	RSB		$0, R0, R0
 	MOVW	R0, err+24(FP)
-	BL		runtime·exitsyscall(SB)
+//	BL		runtime·exitsyscall(SB)
 	RET
 ok:
 	MOVW	R0, r1+16(FP)
 	MOVW	$0, R0
 	MOVW	R0, r2+20(FP)
 	MOVW	R0, err+24(FP)
-	BL		runtime·exitsyscall(SB)
+//	BL		runtime·exitsyscall(SB)
 	RET
 
 // func Syscall6(trap uintptr, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, err uintptr);
 // Actually Syscall5 but the rest of the code expects it to be named Syscall6.
 TEXT	·Syscall6(SB),NOSPLIT,$0-40
-	BL		runtime·entersyscall(SB)
+//	BL		runtime·entersyscall(SB)
 	MOVW	trap+0(FP), R7	// syscall entry
 	MOVW	a1+4(FP), R0
 	MOVW	a2+8(FP), R1
@@ -53,7 +53,7 @@ TEXT	·Syscall6(SB),NOSPLIT,$0-40
 	MOVW	a4+16(FP), R3
 	MOVW	a5+20(FP), R4
 	MOVW	a6+24(FP), R5
-	SWI		$0
+	CALL runtime·trap_debug(SB)
 	MOVW	$0xfffff001, R6
 	CMP		R6, R0
 	BLS		ok6
@@ -63,14 +63,14 @@ TEXT	·Syscall6(SB),NOSPLIT,$0-40
 	MOVW	R2, r2+32(FP)
 	RSB		$0, R0, R0
 	MOVW	R0, err+36(FP)
-	BL		runtime·exitsyscall(SB)
+//	BL		runtime·exitsyscall(SB)
 	RET
 ok6:
 	MOVW	R0, r1+28(FP)
 	MOVW	R1, r2+32(FP)
 	MOVW	$0, R0
 	MOVW	R0, err+36(FP)
-	BL		runtime·exitsyscall(SB)
+//	BL		runtime·exitsyscall(SB)
 	RET
 
 // func RawSyscall6(trap uintptr, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, err uintptr);
@@ -83,7 +83,7 @@ TEXT	·RawSyscall6(SB),NOSPLIT,$0-40
 	MOVW	a4+16(FP), R3
 	MOVW	a5+20(FP), R4
 	MOVW	a6+24(FP), R5
-	SWI		$0
+	CALL runtime·trap_debug(SB)
 	MOVW	$0xfffff001, R6
 	CMP		R6, R0
 	BLS		ok2
@@ -108,14 +108,14 @@ ok2:
 // Underlying system call is
 //	llseek(int fd, int offhi, int offlo, int64 *result, int whence)
 TEXT ·seek(SB),NOSPLIT,$0-28
-	BL	runtime·entersyscall(SB)
+//	BL	runtime·entersyscall(SB)
 	MOVW	$SYS__LLSEEK, R7	// syscall entry
 	MOVW	fd+0(FP), R0
 	MOVW	offset_hi+8(FP), R1
 	MOVW	offset_lo+4(FP), R2
 	MOVW	$newoffset_lo+16(FP), R3
 	MOVW	whence+12(FP), R4
-	SWI	$0
+	CALL runtime·trap_debug(SB)
 	MOVW	$0xfffff001, R6
 	CMP	R6, R0
 	BLS	okseek
@@ -124,14 +124,14 @@ TEXT ·seek(SB),NOSPLIT,$0-28
 	MOVW	R1, newoffset_hi+20(FP)
 	RSB	$0, R0, R0
 	MOVW	R0, err+24(FP)
-	BL	runtime·exitsyscall(SB)
+//	BL	runtime·exitsyscall(SB)
 	RET
 okseek:
 	// system call filled in newoffset already
 	MOVW	$0, R0
 	MOVW	R0, err+24(FP)
-	BL	runtime·exitsyscall(SB)
-	RET	
+//	BL	runtime·exitsyscall(SB)
+	RET
 
 // func RawSyscall(trap uintptr, a1, a2, a3 uintptr) (r1, r2, err uintptr);
 TEXT ·RawSyscall(SB),NOSPLIT,$0-28
@@ -139,7 +139,7 @@ TEXT ·RawSyscall(SB),NOSPLIT,$0-28
 	MOVW	a1+4(FP), R0
 	MOVW	a2+8(FP), R1
 	MOVW	a3+12(FP), R2
-	SWI		$0
+	CALL runtime·trap_debug(SB)
 	MOVW	$0xfffff001, R1
 	CMP		R1, R0
 	BLS		ok1

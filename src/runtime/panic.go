@@ -625,6 +625,8 @@ func recovery(gp *g) {
 	gogo(&gp.sched)
 }
 
+var panicpanic = false
+
 func startpanic_m() {
 	_g_ := getg()
 	if mheap_.cachealloc.size == 0 { // very early
@@ -633,7 +635,7 @@ func startpanic_m() {
 	} else if _g_.m.mcache == nil { // can happen if called from signal handler or throw
 		_g_.m.mcache = allocmcache()
 	}
-
+	panicpanic = true
 	switch _g_.m.dying {
 	case 0:
 		_g_.m.dying = 1
