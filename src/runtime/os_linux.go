@@ -264,7 +264,7 @@ func sysauxv(auxv []uintptr) int {
 
 func osinit() {
 	if Armhackmode > 0 {
-		ncpu = biscuitproccount()
+		ncpu = gertproccount()
 	} else {
 		ncpu = getproccount()
 	}
