@@ -41,10 +41,10 @@ will have to write some drivers.
 
 Write a new UART driver in src/runtime/write_err.go
 
-Modify map_kernel() in src/runtime/gert.go to reflect your memory map
+Modify map_kernel() in src/runtime/gert_arm.go to reflect your memory map
 
-Modify mp_init() in src/runtime/gert.go as well as the associated
-assembly routines in src/runtime/gert.asm to boot your other cpus
+Modify mp_init() in src/runtime/gert_arm.go as well as the associated
+assembly routines in src/runtime/gertasm_arm.s to boot your other cpus
 
 I will give a definitive list of things to modify once I actually finish
 this project
