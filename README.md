@@ -18,19 +18,19 @@ func Entry() {
 
 and then compile your Go program by specifying the entry function and
 its link address like so in a Makefile:
-'''
+```
 GOLINKFLAGS := "-T <link_address> -E main.Entry"
-'''
+```
 
 To set the callback function for IRQs and release other cpus from the
 holding pen, do this somewhere in your program:
-'''
+```
 //set IRQ callback function
 	runtime.SetIRQcallback(irq)
 
 	//Release spinning cpus
 	runtime.Release()
-'''
+```
 
 You will need a bootloader to boot your shiny new baremetal Go program.
 I recommend uBoot.
