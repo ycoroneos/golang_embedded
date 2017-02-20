@@ -6,7 +6,10 @@ the weight of Linux slowing it down.
 This repo tracks the master branch of the main go repo at https://github.com/golang/go.
 
 This modified runtime is also an integral part of G.E.R.T,
-the Golang Embedded RunTime
+the Golang Embedded RunTime. Check it out for examples of
+the modified runtime in action.
+
+https://github.com/ycoroneos/G.E.R.T
 
 ##Usage
 The freescale iMX6Quad is hard-coded in. If you are using this SOC
