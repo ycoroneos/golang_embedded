@@ -1,5 +1,8 @@
 # The Go Programming Language Modified to run on baremetal ARMv7a
 
+Now you can write high-level, concurrent embedded programs without
+the weight of Linux slowing it down.
+
 This repo tracks the master branch of the main go repo at https://github.com/golang/go.
 
 This modified runtime is also an integral part of G.E.R.T,
