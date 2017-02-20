@@ -1,4 +1,4 @@
-# The Go Programming Language Modified to run on baremetal ARMv7a
+# The Go Programming Language Modified To Run On Baremetal ARMv7a
 
 Now you can write high-level, concurrent embedded programs without
 the weight of Linux slowing it down.
