@@ -1432,7 +1432,7 @@ func (p *exporter) stmt(n *Node) {
 	// case ODCLFIELD:
 	//	unimplemented - handled by default case
 
-	case OAS, OASWB:
+	case OAS:
 		// Don't export "v = <N>" initializing statements, hope they're always
 		// preceded by the DCL which will be re-parsed and typecheck to reproduce
 		// the "v = <N>" again.
@@ -1584,6 +1584,8 @@ func (p *exporter) sym(n *Node) {
 	if name != "_" {
 		p.pkg(s.Pkg)
 	}
+	// Fixes issue #18167.
+	p.string(s.Linkname)
 }
 
 func (p *exporter) bool(b bool) bool {

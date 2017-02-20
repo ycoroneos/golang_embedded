@@ -65,7 +65,6 @@ type Node struct {
 	Walkdef   uint8 // tracks state during typecheckdef; 2 == loop detected
 	Typecheck uint8 // tracks state during typechecking; 2 == loop detected
 	Local     bool  // type created in this file (see also Type.Local); TODO(gri): move this into flags
-	IsStatic  bool  // whether this Node will be converted to purely static data
 	Initorder uint8
 	Used      bool // for variable/label declared and not used error
 	Isddd     bool // is the argument variadic
@@ -189,7 +188,6 @@ func (n *Node) SetIota(x int64) {
 type Name struct {
 	Pack      *Node  // real package for import . names
 	Pkg       *Pkg   // pkg for OPACK nodes
-	Heapaddr  *Node  // temp holding heap address of param (could move to Param?)
 	Defn      *Node  // initializing assignment
 	Curfn     *Node  // function for local variables
 	Param     *Param // additional fields for ONAME, OTYPE
@@ -205,7 +203,8 @@ type Name struct {
 }
 
 type Param struct {
-	Ntype *Node
+	Ntype    *Node
+	Heapaddr *Node // temp holding heap address of param
 
 	// ONAME PAUTOHEAP
 	Stackcopy *Node // the PPARAM/PPARAMOUT on-stack slot (moved func params only)
@@ -361,7 +360,6 @@ const (
 	OAS2MAPR         // List = Rlist (x, ok = m["foo"])
 	OAS2DOTTYPE      // List = Rlist (x, ok = I.(int))
 	OASOP            // Left Etype= Right (x += y)
-	OASWB            // Left = Right (with write barrier)
 	OCALL            // Left(List) (function call, method call or type conversion)
 	OCALLFUNC        // Left(List) (function call f(args))
 	OCALLMETH        // Left(List) (direct method call x.Method(args))
@@ -495,15 +493,8 @@ const (
 	OINDREGSP   // offset plus indirect of REGSP, such as 8(SP).
 
 	// arch-specific opcodes
-	OCMP    // compare: ACMP.
-	ODEC    // decrement: ADEC.
-	OINC    // increment: AINC.
-	OEXTEND // extend: ACWD/ACDQ/ACQO.
 	OHMUL   // high mul: AMUL/AIMUL for unsigned/signed (OMUL uses AIMUL for both).
-	ORROTC  // right rotate-carry: ARCR.
 	ORETJMP // return to other function
-	OPS     // compare parity set (for x86 NaN check)
-	OPC     // compare parity clear (for x86 NaN check)
 	OGETG   // runtime.getg() (read g pointer)
 
 	OEND

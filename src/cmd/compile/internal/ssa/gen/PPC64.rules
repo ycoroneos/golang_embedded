@@ -28,7 +28,8 @@
 (Mod32 x y) -> (SUB x (MULLW y (DIVW x y)))
 (Mod32u x y) -> (SUB x (MULLW y (DIVWU x y)))
 
-(Avg64u <t> x y) -> (ADD (ADD <t> (SRD <t> x (MOVDconst <t> [1])) (SRD <t> y (MOVDconst <t> [1]))) (ANDconst <t> (AND <t> x y) [1]))
+// (x + y) / 2 with x>=y -> (x - y) / 2 + y
+(Avg64u <t> x y) -> (ADD (SRDconst <t> (SUB <t> x y) [1]) y)
 
 (Mul64  x y) -> (MULLD  x y)
 (Mul32  x y) -> (MULLW  x y)
@@ -257,10 +258,10 @@
 (Neg16  x) -> (NEG x)
 (Neg8   x) -> (NEG x)
 
-(Com64 x) -> (XORconst [-1] x)
-(Com32 x) -> (XORconst [-1] x)
-(Com16 x) -> (XORconst [-1] x)
-(Com8  x) -> (XORconst [-1] x)
+(Com64 x) -> (NOR x x)
+(Com32 x) -> (NOR x x)
+(Com16 x) -> (NOR x x)
+(Com8  x) -> (NOR x x)
 
 // Lowering boolean ops
 (AndB x y) -> (AND x y)
@@ -268,7 +269,7 @@
 (Not x) -> (XORconst [1] x)
 
 // Use ANDN for AND x NOT y
-(AND x (XORconst [-1] y)) -> (ANDN x y)
+(AND x (NOR y y)) -> (ANDN x y)
 
 // Lowering comparisons
 (EqB x y)  -> (ANDconst [1] (EQV x y))

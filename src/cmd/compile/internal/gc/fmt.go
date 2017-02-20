@@ -163,7 +163,6 @@ var goopnames = []string{
 	OCOM:      "^",
 	OCONTINUE: "continue",
 	OCOPY:     "copy",
-	ODEC:      "--",
 	ODELETE:   "delete",
 	ODEFER:    "defer",
 	ODIV:      "/",
@@ -175,7 +174,6 @@ var goopnames = []string{
 	OGT:       ">",
 	OIF:       "if",
 	OIMAG:     "imag",
-	OINC:      "++",
 	OIND:      "*",
 	OLEN:      "len",
 	OLE:       "<=",
@@ -335,10 +333,6 @@ func (n *Node) jconv(s fmt.State, flag FmtFlag) {
 
 	if c == 0 && n.Typecheck != 0 {
 		fmt.Fprintf(s, " tc(%d)", n.Typecheck)
-	}
-
-	if c == 0 && n.IsStatic {
-		fmt.Fprint(s, " static")
 	}
 
 	if n.Isddd {
@@ -837,7 +831,7 @@ func (n *Node) stmtfmt(s fmt.State) {
 	// Don't export "v = <N>" initializing statements, hope they're always
 	// preceded by the DCL which will be re-parsed and typechecked to reproduce
 	// the "v = <N>" again.
-	case OAS, OASWB:
+	case OAS:
 		if n.Colas && !complexinit {
 			fmt.Fprintf(s, "%v := %v", n.Left, n.Right)
 		} else {

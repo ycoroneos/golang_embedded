@@ -66,6 +66,11 @@ func TestTokens(t *testing.T) {
 		}
 
 		switch want.tok {
+		case _Semi:
+			if got.lit != "semicolon" {
+				t.Errorf("got %s; want semicolon", got.lit)
+			}
+
 		case _Name, _Literal:
 			if got.lit != want.src {
 				t.Errorf("got lit = %q; want %q", got.lit, want.src)
@@ -93,6 +98,9 @@ func TestTokens(t *testing.T) {
 			if got.tok != _Semi {
 				t.Errorf("got tok = %s; want ;", got.tok)
 				continue
+			}
+			if got.lit != "newline" {
+				t.Errorf("got %s; want newline", got.lit)
 			}
 		}
 
@@ -284,9 +292,9 @@ func TestScanErrors(t *testing.T) {
 
 		{`''`, "empty character literal or unescaped ' in character literal", 1, 1},
 		{"'\n", "newline in character literal", 1, 1},
-		{`'\`, "missing '", 1, 2},
-		{`'\'`, "missing '", 1, 3},
-		{`'\x`, "missing '", 1, 3},
+		{`'\`, "invalid character literal (missing closing ')", 1, 0},
+		{`'\'`, "invalid character literal (missing closing ')", 1, 0},
+		{`'\x`, "invalid character literal (missing closing ')", 1, 0},
 		{`'\x'`, "non-hex character in escape sequence: '", 1, 3},
 		{`'\y'`, "unknown escape sequence", 1, 2},
 		{`'\x0'`, "non-hex character in escape sequence: '", 1, 4},
@@ -294,7 +302,8 @@ func TestScanErrors(t *testing.T) {
 		{`'\377' /*`, "comment not terminated", 1, 7}, // valid octal escape
 		{`'\378`, "non-octal character in escape sequence: 8", 1, 4},
 		{`'\400'`, "octal escape value > 255: 256", 1, 5},
-		{`'xx`, "missing '", 1, 2},
+		{`'xx`, "invalid character literal (missing closing ')", 1, 0},
+		{`'xx'`, "invalid character literal (more than one character)", 1, 0},
 
 		{"\"\n", "newline in string", 1, 1},
 		{`"`, "string not terminated", 1, 0},

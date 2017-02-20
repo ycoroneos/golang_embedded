@@ -1463,6 +1463,7 @@ func (t *rtype) ptrTo() *rtype {
 	pp := *prototype
 
 	pp.str = resolveReflectName(newName(s, "", "", false))
+	pp.ptrToThis = 0
 
 	// For the type structures linked into the binary, the
 	// compiler provides a good hash of the string.
@@ -3155,7 +3156,7 @@ func ifaceIndir(t *rtype) bool {
 	return t.kind&kindDirectIface == 0
 }
 
-// Layout matches runtime.BitVector (well enough).
+// Layout matches runtime.gobitvector (well enough).
 type bitVector struct {
 	n    uint32 // number of bits
 	data []byte

@@ -771,33 +771,20 @@ func rewriteValuePPC64_OpAvg64u(v *Value, config *Config) bool {
 	_ = b
 	// match: (Avg64u <t> x y)
 	// cond:
-	// result: (ADD (ADD <t> (SRD <t> x (MOVDconst <t> [1])) (SRD <t> y (MOVDconst <t> [1]))) (ANDconst <t> (AND <t> x y) [1]))
+	// result: (ADD (SRDconst <t> (SUB <t> x y) [1]) y)
 	for {
 		t := v.Type
 		x := v.Args[0]
 		y := v.Args[1]
 		v.reset(OpPPC64ADD)
-		v0 := b.NewValue0(v.Pos, OpPPC64ADD, t)
-		v1 := b.NewValue0(v.Pos, OpPPC64SRD, t)
+		v0 := b.NewValue0(v.Pos, OpPPC64SRDconst, t)
+		v0.AuxInt = 1
+		v1 := b.NewValue0(v.Pos, OpPPC64SUB, t)
 		v1.AddArg(x)
-		v2 := b.NewValue0(v.Pos, OpPPC64MOVDconst, t)
-		v2.AuxInt = 1
-		v1.AddArg(v2)
+		v1.AddArg(y)
 		v0.AddArg(v1)
-		v3 := b.NewValue0(v.Pos, OpPPC64SRD, t)
-		v3.AddArg(y)
-		v4 := b.NewValue0(v.Pos, OpPPC64MOVDconst, t)
-		v4.AuxInt = 1
-		v3.AddArg(v4)
-		v0.AddArg(v3)
 		v.AddArg(v0)
-		v5 := b.NewValue0(v.Pos, OpPPC64ANDconst, t)
-		v5.AuxInt = 1
-		v6 := b.NewValue0(v.Pos, OpPPC64AND, t)
-		v6.AddArg(x)
-		v6.AddArg(y)
-		v5.AddArg(v6)
-		v.AddArg(v5)
+		v.AddArg(y)
 		return true
 	}
 }
@@ -825,11 +812,11 @@ func rewriteValuePPC64_OpCom16(v *Value, config *Config) bool {
 	_ = b
 	// match: (Com16 x)
 	// cond:
-	// result: (XORconst [-1] x)
+	// result: (NOR x x)
 	for {
 		x := v.Args[0]
-		v.reset(OpPPC64XORconst)
-		v.AuxInt = -1
+		v.reset(OpPPC64NOR)
+		v.AddArg(x)
 		v.AddArg(x)
 		return true
 	}
@@ -839,11 +826,11 @@ func rewriteValuePPC64_OpCom32(v *Value, config *Config) bool {
 	_ = b
 	// match: (Com32 x)
 	// cond:
-	// result: (XORconst [-1] x)
+	// result: (NOR x x)
 	for {
 		x := v.Args[0]
-		v.reset(OpPPC64XORconst)
-		v.AuxInt = -1
+		v.reset(OpPPC64NOR)
+		v.AddArg(x)
 		v.AddArg(x)
 		return true
 	}
@@ -853,11 +840,11 @@ func rewriteValuePPC64_OpCom64(v *Value, config *Config) bool {
 	_ = b
 	// match: (Com64 x)
 	// cond:
-	// result: (XORconst [-1] x)
+	// result: (NOR x x)
 	for {
 		x := v.Args[0]
-		v.reset(OpPPC64XORconst)
-		v.AuxInt = -1
+		v.reset(OpPPC64NOR)
+		v.AddArg(x)
 		v.AddArg(x)
 		return true
 	}
@@ -867,11 +854,11 @@ func rewriteValuePPC64_OpCom8(v *Value, config *Config) bool {
 	_ = b
 	// match: (Com8  x)
 	// cond:
-	// result: (XORconst [-1] x)
+	// result: (NOR x x)
 	for {
 		x := v.Args[0]
-		v.reset(OpPPC64XORconst)
-		v.AuxInt = -1
+		v.reset(OpPPC64NOR)
+		v.AddArg(x)
 		v.AddArg(x)
 		return true
 	}
@@ -4473,19 +4460,19 @@ func rewriteValuePPC64_OpPPC64ADDconst(v *Value, config *Config) bool {
 func rewriteValuePPC64_OpPPC64AND(v *Value, config *Config) bool {
 	b := v.Block
 	_ = b
-	// match: (AND x (XORconst [-1] y))
+	// match: (AND x (NOR y y))
 	// cond:
 	// result: (ANDN x y)
 	for {
 		x := v.Args[0]
 		v_1 := v.Args[1]
-		if v_1.Op != OpPPC64XORconst {
-			break
-		}
-		if v_1.AuxInt != -1 {
+		if v_1.Op != OpPPC64NOR {
 			break
 		}
 		y := v_1.Args[0]
+		if y != v_1.Args[1] {
+			break
+		}
 		v.reset(OpPPC64ANDN)
 		v.AddArg(x)
 		v.AddArg(y)

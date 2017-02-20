@@ -136,7 +136,7 @@ func instrumentnode(np **Node, init *Nodes, wr int, skip int) {
 	default:
 		Fatalf("instrument: unknown node type %v", n.Op)
 
-	case OAS, OASWB, OAS2FUNC:
+	case OAS, OAS2FUNC:
 		instrumentnode(&n.Left, init, 1, 0)
 		instrumentnode(&n.Right, init, 0, 0)
 		goto ret
@@ -367,11 +367,6 @@ func instrumentnode(np **Node, init *Nodes, wr int, skip int) {
 		OASOP:
 		yyerror("instrument: %v must be lowered by now", n.Op)
 
-		goto ret
-
-		// impossible nodes: only appear in backend.
-	case ORROTC, OEXTEND:
-		yyerror("instrument: %v cannot exist now", n.Op)
 		goto ret
 
 	case OGETG:

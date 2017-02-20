@@ -628,10 +628,12 @@ func (c *gcControllerState) endCycle() {
 //go:nowritebarrier
 func (c *gcControllerState) enlistWorker() {
 	// If there are idle Ps, wake one so it will run an idle worker.
-	if atomic.Load(&sched.npidle) != 0 && atomic.Load(&sched.nmspinning) == 0 {
-		wakep()
-		return
-	}
+	// NOTE: This is suspected of causing deadlocks. See golang.org/issue/19112.
+	//
+	//	if atomic.Load(&sched.npidle) != 0 && atomic.Load(&sched.nmspinning) == 0 {
+	//		wakep()
+	//		return
+	//	}
 
 	// There are no idle Ps. If we need more dedicated workers,
 	// try to preempt a running P so it will switch to a worker.
@@ -648,7 +650,7 @@ func (c *gcControllerState) enlistWorker() {
 	}
 	myID := gp.m.p.ptr().id
 	for tries := 0; tries < 5; tries++ {
-		id := int32(fastrand() % uint32(gomaxprocs-1))
+		id := int32(fastrandn(uint32(gomaxprocs - 1)))
 		if id >= myID {
 			id++
 		}
@@ -813,15 +815,13 @@ var work struct {
 	// should pass gcDrainBlock to gcDrain to block in the
 	// getfull() barrier. Otherwise, they should pass gcDrainNoBlock.
 	//
-	// TODO: This is a temporary fallback to support
-	// debug.gcrescanstacks > 0 and to work around some known
-	// races. Remove this when we remove the debug option and fix
-	// the races.
+	// TODO: This is a temporary fallback to work around races
+	// that cause early mark termination.
 	helperDrainBlock bool
 
 	// Number of roots of various root types. Set by gcMarkRootPrepare.
-	nFlushCacheRoots                                             int
-	nDataRoots, nBSSRoots, nSpanRoots, nStackRoots, nRescanRoots int
+	nFlushCacheRoots                               int
+	nDataRoots, nBSSRoots, nSpanRoots, nStackRoots int
 
 	// markrootDone indicates that roots have been marked at least
 	// once during the current GC cycle. This is checked by root
@@ -871,14 +871,6 @@ var work struct {
 	assistQueue struct {
 		lock       mutex
 		head, tail guintptr
-	}
-
-	// rescan is a list of G's that need to be rescanned during
-	// mark termination. A G adds itself to this list when it
-	// first invalidates its stack scan.
-	rescan struct {
-		lock mutex
-		list []guintptr
 	}
 
 	// Timing/utilization stats for this cycle.
@@ -961,7 +953,7 @@ func gcStart(mode gcMode, forceTrigger bool) {
 	// another thread.
 	useStartSema := mode == gcBackgroundMode
 	if useStartSema {
-		semacquire(&work.startSema, 0)
+		semacquire(&work.startSema)
 		// Re-check transition condition under transition lock.
 		if !gcShouldStart(forceTrigger) {
 			semrelease(&work.startSema)
@@ -985,7 +977,7 @@ func gcStart(mode gcMode, forceTrigger bool) {
 	}
 
 	// Ok, we're doing it!  Stop everybody else
-	semacquire(&worldsema, 0)
+	semacquire(&worldsema)
 
 	if trace.enabled {
 		traceGCStart()
@@ -1026,18 +1018,7 @@ func gcStart(mode gcMode, forceTrigger bool) {
 		// the time we start the world and begin
 		// scanning.
 		//
-		// It's necessary to enable write barriers
-		// during the scan phase for several reasons:
-		//
-		// They must be enabled for writes to higher
-		// stack frames before we scan stacks and
-		// install stack barriers because this is how
-		// we track writes to inactive stack frames.
-		// (Alternatively, we could not install stack
-		// barriers over frame boundaries with
-		// up-pointers).
-		//
-		// They must be enabled before assists are
+		// Write barriers must be enabled before assists are
 		// enabled because they must be enabled before
 		// any non-leaf heap objects are marked. Since
 		// allocations are blocked until assists can
@@ -1106,7 +1087,7 @@ func gcStart(mode gcMode, forceTrigger bool) {
 // by mark termination.
 func gcMarkDone() {
 top:
-	semacquire(&work.markDoneSema, 0)
+	semacquire(&work.markDoneSema)
 
 	// Re-check transition condition under transition lock.
 	if !(gcphase == _GCmark && work.nwait == work.nproc && !gcMarkWorkAvailable(nil)) {
@@ -1291,10 +1272,13 @@ func gcMarkTermination() {
 	}
 
 	// Update timing memstats
-	now, unixNow := nanotime(), unixnanotime()
+	now := nanotime()
+	sec, nsec, _ := time_now()
+	unixNow := sec*1e9 + int64(nsec)
 	work.pauseNS += now - work.pauseStart
 	work.tEnd = now
-	atomic.Store64(&memstats.last_gc, uint64(unixNow)) // must be Unix time to make sense to user
+	atomic.Store64(&memstats.last_gc_unix, uint64(unixNow)) // must be Unix time to make sense to user
+	atomic.Store64(&memstats.last_gc_nanotime, uint64(now)) // monotonic time for us
 	memstats.pause_ns[memstats.numgc%uint32(len(memstats.pause_ns))] = uint64(work.pauseNS)
 	memstats.pause_end[memstats.numgc%uint32(len(memstats.pause_end))] = uint64(unixNow)
 	memstats.pause_total_ns += uint64(work.pauseNS)
@@ -1334,13 +1318,6 @@ func gcMarkTermination() {
 
 	// Free stack spans. This must be done between GC cycles.
 	systemstack(freeStackSpans)
-
-	// Best-effort remove stack barriers so they don't get in the
-	// way of things like GDB and perf.
-	lock(&allglock)
-	myallgs := allgs
-	unlock(&allglock)
-	gcTryRemoveAllStackBarriers(myallgs)
 
 	// Print gctrace before dropping worldsema. As soon as we drop
 	// worldsema another cycle could start and smash the stats
@@ -1627,24 +1604,22 @@ func gcMark(start_time int64) {
 	work.ndone = 0
 	work.nproc = uint32(gcprocs())
 
-	if debug.gcrescanstacks == 0 && work.full == 0 && work.nDataRoots+work.nBSSRoots+work.nSpanRoots+work.nStackRoots+work.nRescanRoots == 0 {
+	if work.full == 0 && work.nDataRoots+work.nBSSRoots+work.nSpanRoots+work.nStackRoots == 0 {
 		// There's no work on the work queue and no root jobs
 		// that can produce work, so don't bother entering the
 		// getfull() barrier.
 		//
-		// With the hybrid barrier enabled, this will be the
-		// situation the vast majority of the time after
-		// concurrent mark. However, we still need a fallback
-		// for STW GC and because there are some known races
-		// that occasionally leave work around for mark
-		// termination.
+		// This will be the situation the vast majority of the
+		// time after concurrent mark. However, we still need
+		// a fallback for STW GC and because there are some
+		// known races that occasionally leave work around for
+		// mark termination.
 		//
 		// We're still hedging our bets here: if we do
 		// accidentally produce some work, we'll still process
 		// it, just not necessarily in parallel.
 		//
-		// TODO(austin): When we eliminate
-		// debug.gcrescanstacks: fix the races, and remove
+		// TODO(austin): Fix the races and and remove
 		// work draining from mark termination so we don't
 		// need the fallback path.
 		work.helperDrainBlock = false
@@ -1824,21 +1799,13 @@ func gcSweep(mode gcMode) {
 func gcResetMarkState() {
 	// This may be called during a concurrent phase, so make sure
 	// allgs doesn't change.
-	if !(gcphase == _GCoff || gcphase == _GCmarktermination) {
-		// Accessing gcRescan is unsafe.
-		throw("bad GC phase")
-	}
 	lock(&allglock)
 	for _, gp := range allgs {
 		gp.gcscandone = false  // set to true in gcphasework
 		gp.gcscanvalid = false // stack has not been scanned
-		gp.gcRescan = -1
 		gp.gcAssistBytes = 0
 	}
 	unlock(&allglock)
-
-	// Clear rescan list.
-	work.rescan.list = work.rescan.list[:0]
 
 	work.bytesMarked = 0
 	work.initialHeapLive = memstats.heap_live

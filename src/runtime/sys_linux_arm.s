@@ -203,18 +203,18 @@ TEXT runtime·mincore(SB), NOSPLIT, $0
 	MOVW R0, ret+12(FP)
 	RET
 
-TEXT time·now(SB), NOSPLIT, $32
+TEXT runtime·walltime(SB), NOSPLIT, $32
 	MOVW $0, R0                 // CLOCK_REALTIME
 	MOVW $8(R13), R1            // timespec
 	MOVW $SYS_clock_gettime, R7
-	CALL ·trap_debug(SB)
+	SWI  $0
 
 	MOVW 8(R13), R0  // sec
 	MOVW 12(R13), R2 // nsec
 
-	MOVW R0, sec+0(FP)
+	MOVW R0, sec_lo+0(FP)
 	MOVW $0, R1
-	MOVW R1, loc+4(FP)
+	MOVW R1, sec_hi+4(FP)
 	MOVW R2, nsec+8(FP)
 	RET
 
@@ -237,20 +237,6 @@ TEXT runtime·nanotime(SB), NOSPLIT, $32
 	MOVW R0, ret_lo+0(FP)
 	MOVW R1, ret_hi+4(FP)
 	RET
-
-// int32 futex(int32 *uaddr, int32 op, int32 val,
-//	struct timespec *timeout, int32 *uaddr2, int32 val2);
-// TEXT runtime·futex(SB),NOSPLIT,$0
-//	MOVW    addr+0(FP), R0
-//	MOVW    op+4(FP), R1
-//	MOVW    val+8(FP), R2
-//	MOVW    ts+12(FP), R3
-//	MOVW    addr2+16(FP), R4
-//	MOVW    val3+20(FP), R5
-//	MOVW	$SYS_futex, R7
-//	CALL ·trap_debug(SB)
-//	MOVW	R0, ret+24(FP)
-//	RET
 
 TEXT runtime·futex(SB), NOSPLIT, $0
 	JMP ·hack_futex_arm(SB)
@@ -335,16 +321,6 @@ nog:
 
 TEXT runtime·sigaltstack(SB), NOSPLIT, $0
 	JMP ·hack_sigaltstack(SB)
-
-//	MOVW    new+0(FP), R0
-//	MOVW    old+4(FP), R1
-//	MOVW    $SYS_sigaltstack, R7
-//	CALL    ·trap_debug(SB)
-//	MOVW    $0xfffff001, R6
-//	CMP     R6, R0
-//	MOVW.HI $0, R8               // crash on syscall failure
-//	MOVW.HI R8, (R8)
-//	RET
 
 TEXT runtime·sigfwd(SB), NOSPLIT, $0-16
 	MOVW sig+4(FP), R0

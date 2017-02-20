@@ -365,18 +365,22 @@ var Thearch Arch
 
 var (
 	staticbytes,
-	zerobase,
+	zerobase *Node
+
 	Newproc,
 	Deferproc,
 	Deferreturn,
+	Duffcopy,
+	Duffzero,
 	panicindex,
 	panicslice,
 	panicdivide,
 	growslice,
-	panicdottype,
+	panicdottypeE,
+	panicdottypeI,
 	panicnildottype,
 	assertE2I,
 	assertE2I2,
 	assertI2I,
-	assertI2I2 *Node
+	assertI2I2 *obj.LSym
 )

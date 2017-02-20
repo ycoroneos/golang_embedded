@@ -27,7 +27,7 @@ type scanner struct {
 	// current token, valid after calling next()
 	line, col uint
 	tok       token
-	lit       string   // valid if tok is _Name or _Literal
+	lit       string   // valid if tok is _Name, _Literal, or _Semi ("semicolon", "newline", or "EOF")
 	kind      LitKind  // valid if tok is _Literal
 	op        Operator // valid if tok is _Operator, _AssignOp, or _IncOp
 	prec      int      // valid if tok is _Operator, _AssignOp, or _IncOp
@@ -45,10 +45,11 @@ func (s *scanner) init(src io.Reader, errh, pragh func(line, col uint, msg strin
 // calls the error handler installed with init. The handler
 // must exist.
 //
-// If a //line or //go: directive is encountered, next
-// calls the pragma handler installed with init, if not nil.
+// If a //line or //go: directive is encountered at the start
+// of a line, next calls the directive handler pragh installed
+// with init, if not nil.
 //
-// The (line, col) position passed to the error and pragma
+// The (line, col) position passed to the error and directive
 // handler is always at or after the current source reading
 // position.
 func (s *scanner) next() {
@@ -73,12 +74,14 @@ redo:
 	switch c {
 	case -1:
 		if nlsemi {
+			s.lit = "EOF"
 			s.tok = _Semi
 			break
 		}
 		s.tok = _EOF
 
 	case '\n':
+		s.lit = "newline"
 		s.tok = _Semi
 
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
@@ -106,6 +109,7 @@ redo:
 		s.tok = _Comma
 
 	case ';':
+		s.lit = "semicolon"
 		s.tok = _Semi
 
 	case ')':
@@ -185,6 +189,7 @@ redo:
 			if s.source.line > s.line && nlsemi {
 				// A multi-line comment acts like a newline;
 				// it translates to a ';' if nlsemi is set.
+				s.lit = "newline"
 				s.tok = _Semi
 				break
 			}
@@ -461,6 +466,53 @@ done:
 	s.tok = _Literal
 }
 
+func (s *scanner) rune() {
+	s.startLit()
+
+	ok := true // only report errors if we're ok so far
+	n := 0
+	for ; ; n++ {
+		r := s.getr()
+		if r == '\'' {
+			break
+		}
+		if r == '\\' {
+			if !s.escape('\'') {
+				ok = false
+			}
+			continue
+		}
+		if r == '\n' {
+			s.ungetr() // assume newline is not part of literal
+			if ok {
+				s.error("newline in character literal")
+				ok = false
+			}
+			break
+		}
+		if r < 0 {
+			if ok {
+				s.errh(s.line, s.col, "invalid character literal (missing closing ')")
+				ok = false
+			}
+			break
+		}
+	}
+
+	if ok {
+		if n == 0 {
+			s.error("empty character literal or unescaped ' in character literal")
+		} else if n != 1 {
+			s.errh(s.line, s.col, "invalid character literal (more than one character)")
+		}
+	}
+
+	s.nlsemi = true
+	s.lit = string(s.stopLit())
+	s.kind = RuneLit
+	s.tok = _Literal
+}
+
 func (s *scanner) stdString() {
 	s.startLit()
 
@@ -513,38 +565,6 @@ func (s *scanner) rawString() {
 	s.tok = _Literal
 }
 
-func (s *scanner) rune() {
-	s.startLit()
-
-	r := s.getr()
-	ok := false
-	if r == '\'' {
-		s.error("empty character literal or unescaped ' in character literal")
-	} else if r == '\n' {
-		s.ungetr() // assume newline is not part of literal
-		s.error("newline in character literal")
-	} else {
-		ok = true
-		if r == '\\' {
-			ok = s.escape('\'')
-		}
-	}
-
-	r = s.getr()
-	if r != '\'' {
-		// only report error if we're ok so far
-		if ok {
-			s.error("missing '")
-		}
-		s.ungetr()
-	}
-
-	s.nlsemi = true
-	s.lit = string(s.stopLit())
-	s.kind = RuneLit
-	s.tok = _Literal
-}
-
 func (s *scanner) skipLine(r rune) {
 	for r >= 0 {
 		if r == '\n' {
@@ -557,13 +577,14 @@ func (s *scanner) skipLine(r rune) {
 
 func (s *scanner) lineComment() {
 	r := s.getr()
-	if s.pragh == nil || (r != 'g' && r != 'l') {
+	// directives must start at the beginning of the line (s.col == 0)
+	if s.col != 0 || s.pragh == nil || (r != 'g' && r != 'l') {
 		s.skipLine(r)
 		return
 	}
-	// s.pragh != nil && (r == 'g' || r == 'l')
+	// s.col == 0 && s.pragh != nil && (r == 'g' || r == 'l')
 
-	// recognize pragmas
+	// recognize directives
 	prefix := "go:"
 	if r == 'l' {
 		prefix = "line "
@@ -576,7 +597,7 @@ func (s *scanner) lineComment() {
 		r = s.getr()
 	}
 
-	// pragma text without line ending (which may be "\r\n" if Windows),
+	// directive text without line ending (which may be "\r\n" if Windows),
 	s.startLit()
 	s.skipLine(r)
 	text := s.stopLit()
@@ -584,7 +605,7 @@ func (s *scanner) lineComment() {
 		text = text[:i]
 	}
 
-	s.pragh(s.line, s.col+2, prefix+string(text)) // +2 since pragma text starts after //
+	s.pragh(s.line, s.col+2, prefix+string(text)) // +2 since directive text starts after //
 }
 
 func (s *scanner) fullComment() {

@@ -206,6 +206,18 @@ func orderaddrtemp(n *Node, order *Order) *Node {
 	return ordercopyexpr(n, n.Type, order, 0)
 }
 
+// ordermapkeytemp prepares n.Right to be a key in a map lookup.
+func ordermapkeytemp(n *Node, order *Order) {
+	// Most map calls need to take the address of the key.
+	// Exception: mapaccessN_fast* calls. See golang.org/issue/19015.
+	p, _ := mapaccessfast(n.Left.Type)
+	fastaccess := p != "" && n.Etype == 0 // Etype == 0 iff n is an rvalue
+	if fastaccess {
+		return
+	}
+	n.Right = orderaddrtemp(n.Right, order)
+}
+
 type ordermarker int
 
 // Marktemp returns the top of the temporary variable stack.
@@ -417,9 +429,6 @@ func ordercall(n *Node, order *Order) {
 // cases they are also typically registerizable, so not much harm done.
 // And this only applies to the multiple-assignment form.
 // We could do a more precise analysis if needed, like in walk.go.
-//
-// Ordermapassign also inserts these temporaries if needed for
-// calling writebarrierfat with a pointer to n->right.
 func ordermapassign(n *Node, order *Order) {
 	switch n.Op {
 	default:
@@ -427,17 +436,6 @@ func ordermapassign(n *Node, order *Order) {
 
 	case OAS:
 		order.out = append(order.out, n)
-
-		// We call writebarrierfat only for values > 4 pointers long. See walk.go.
-		// TODO(mdempsky): writebarrierfat doesn't exist anymore, but removing that
-		// logic causes net/http's tests to become flaky; see CL 21242.
-		if needwritebarrier(n.Left, n.Right) && n.Left.Type.Width > int64(4*Widthptr) && n.Right != nil && !isaddrokay(n.Right) {
-			m := n.Left
-			n.Left = ordertemp(m.Type, order, false)
-			a := nod(OAS, m, n.Left)
-			a = typecheck(a, Etop)
-			order.out = append(order.out, a)
-		}
 
 	case OAS2, OAS2DOTTYPE, OAS2MAPR, OAS2FUNC:
 		var post []*Node
@@ -510,7 +508,7 @@ func orderstmt(n *Node, order *Order) {
 		orderexprlist(n.List, order)
 		orderexprlist(n.Rlist, order)
 		switch n.Op {
-		case OAS2, OAS2DOTTYPE:
+		case OAS2:
 			ordermapassign(n, order)
 		default:
 			order.out = append(order.out, n)
@@ -541,7 +539,7 @@ func orderstmt(n *Node, order *Order) {
 		ordermapassign(n, order)
 		cleantemp(t, order)
 
-	// Special: make sure key is addressable,
+	// Special: make sure key is addressable if needed,
 	// and make sure OINDEXMAP is not copied out.
 	case OAS2MAPR:
 		t := marktemp(order)
@@ -555,8 +553,8 @@ func orderstmt(n *Node, order *Order) {
 		if r.Right.Op == OARRAYBYTESTR {
 			r.Right.Op = OARRAYBYTESTRTMP
 		}
-		r.Right = orderaddrtemp(r.Right, order)
-		ordermapassign(n, order)
+		ordermapkeytemp(r, order)
+		orderokas2(n, order)
 		cleantemp(t, order)
 
 	// Special: avoid copy of func call n->rlist->n.
@@ -565,7 +563,7 @@ func orderstmt(n *Node, order *Order) {
 
 		orderexprlist(n.List, order)
 		ordercall(n.Rlist.First(), order)
-		ordermapassign(n, order)
+		orderas2(n, order)
 		cleantemp(t, order)
 
 	// Special: use temporary variables to hold result,
@@ -576,31 +574,7 @@ func orderstmt(n *Node, order *Order) {
 
 		orderexprlist(n.List, order)
 		n.Rlist.First().Left = orderexpr(n.Rlist.First().Left, order, nil) // i in i.(T)
-
-		var tmp1, tmp2 *Node
-		if !isblank(n.List.First()) {
-			typ := n.Rlist.First().Type
-			tmp1 = ordertemp(typ, order, haspointers(typ))
-		}
-		if !isblank(n.List.Second()) && !n.List.Second().Type.IsBoolean() {
-			tmp2 = ordertemp(Types[TBOOL], order, false)
-		}
-
-		order.out = append(order.out, n)
-
-		if tmp1 != nil {
-			r := nod(OAS, n.List.First(), tmp1)
-			r = typecheck(r, Etop)
-			ordermapassign(r, order)
-			n.List.SetIndex(0, tmp1)
-		}
-		if tmp2 != nil {
-			r := okas(n.List.Second(), tmp2)
-			r = typecheck(r, Etop)
-			ordermapassign(r, order)
-			n.List.SetIndex(1, tmp2)
-		}
-
+		orderokas2(n, order)
 		cleantemp(t, order)
 
 	// Special: use temporary variables to hold result,
@@ -1088,9 +1062,7 @@ func orderexpr(n *Node, order *Order, lhs *Node) *Node {
 			needCopy = true
 		}
 
-		// Map calls need to take the address of the key.
-		n.Right = orderaddrtemp(n.Right, order)
-
+		ordermapkeytemp(n, order)
 		if needCopy {
 			n = ordercopyexpr(n, n.Type, order, 0)
 		}
@@ -1232,4 +1204,69 @@ func okas(ok, val *Node) *Node {
 		val = conv(val, ok.Type)
 	}
 	return nod(OAS, ok, val)
+}
+
+// orderas2 orders OAS2XXXX nodes. It creates temporaries to ensure left-to-right assignment.
+// The caller should order the right-hand side of the assignment before calling orderas2.
+// It rewrites,
+// 	a, b, a = ...
+// as
+//	tmp1, tmp2, tmp3 = ...
+// 	a, b, a = tmp1, tmp2, tmp3
+// This is necessary to ensure left to right assignment order.
+func orderas2(n *Node, order *Order) {
+	tmplist := []*Node{}
+	left := []*Node{}
+	for _, l := range n.List.Slice() {
+		if !isblank(l) {
+			tmp := ordertemp(l.Type, order, haspointers(l.Type))
+			tmplist = append(tmplist, tmp)
+			left = append(left, l)
+		}
+	}
+
+	order.out = append(order.out, n)
+
+	as := nod(OAS2, nil, nil)
+	as.List.Set(left)
+	as.Rlist.Set(tmplist)
+	as = typecheck(as, Etop)
+	orderstmt(as, order)
+
+	ti := 0
+	for ni, l := range n.List.Slice() {
+		if !isblank(l) {
+			n.List.SetIndex(ni, tmplist[ti])
+			ti++
+		}
+	}
+}
+
+// orderokas2 orders OAS2 with ok.
+// Just like orderas2(), this also adds temporaries to ensure left-to-right assignment.
+func orderokas2(n *Node, order *Order) {
+	var tmp1, tmp2 *Node
+	if !isblank(n.List.First()) {
+		typ := n.Rlist.First().Type
+		tmp1 = ordertemp(typ, order, haspointers(typ))
+	}
+
+	if !isblank(n.List.Second()) {
+		tmp2 = ordertemp(Types[TBOOL], order, false)
+	}
+
+	order.out = append(order.out, n)
+
+	if tmp1 != nil {
+		r := nod(OAS, n.List.First(), tmp1)
+		r = typecheck(r, Etop)
+		ordermapassign(r, order)
+		n.List.SetIndex(0, tmp1)
+	}
+	if tmp2 != nil {
+		r := okas(n.List.Second(), tmp2)
+		r = typecheck(r, Etop)
+		ordermapassign(r, order)
+		n.List.SetIndex(1, tmp2)
+	}
 }
