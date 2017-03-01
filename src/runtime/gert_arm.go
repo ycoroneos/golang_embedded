@@ -934,12 +934,22 @@ func cpucatch() {
 //go:nowritebarrierrec
 func cpuabort() {
 	addr := RR0()
+	mem_addr := RR1()
 	me := cpunum()
 	//err := "abort on cpu" + str(me) + "from addr" + hex(addr) + "\n"
 	//write_uart(err)
-	print("data abort on cpu ", me, " from read/write on addr ", hex(addr), "\n")
-	for {
-	}
+	pte := walk_pgdir(kernpgdir, addr)
+	pte_mem := walk_pgdir(kernpgdir, mem_addr)
+	print("data abort on cpu ", me, " from instruction on addr ", hex(addr), ". Faulting memory addr: ", hex(mem_addr), "\n")
+	print("pte for this instruction addr is : ", hex(*pte), "\n")
+	print("pte for the fault addr is : ", hex(*pte_mem), "\n")
+	print("zerobase is ", hex(zerobase))
+	zerobase_addr := uintptr(unsafe.Pointer(&zerobase))
+	print("zerobase addr is ", hex(zerobase_addr))
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
+	//	for {
+	//	}
 }
 
 //go:nosplit

@@ -440,9 +440,12 @@ TEXT runtime·getcatch(SB), NOSPLIT, $0
 	RET
 
 TEXT runtime·abort_int(SB), NOSPLIT, $0
-	WORD $0xe24ee008                // sub	lr, lr, #8
-	WORD $0xe92d5fff                // push	{r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, sl, fp, ip, lr}
+	WORD $0xe24ee008 // sub	lr, lr, #8
+	WORD $0xe92d5fff // push	{r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, sl, fp, ip, lr}
 	MOVW R14, R0
+
+	// load the fault address into R1 from the FAR
+	WORD $0xee161f10                // mrc	15, 0, r1, cr6, cr0, {0}
 	MOVW $runtime·cpuabort(SB), R11
 	BL   (R11)
 	WORD $0xe8fd9fff                // ldm	sp!, {r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, sl, fp, ip, pc}^
