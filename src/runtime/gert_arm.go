@@ -937,7 +937,7 @@ func cpuabort() {
 	me := cpunum()
 	//err := "abort on cpu" + str(me) + "from addr" + hex(addr) + "\n"
 	//write_uart(err)
-	print("abort on cpu ", me, " from addr ", hex(addr), "\n")
+	print("data abort on cpu ", me, " from read/write on addr ", hex(addr), "\n")
 	for {
 	}
 }
@@ -947,7 +947,10 @@ func cpuabort() {
 func cpuprefabort() {
 	addr := RR0()
 	me := cpunum()
+	pte := walk_pgdir(kernpgdir, addr)
 	print("prefetch abort on cpu ", me, " from addr ", hex(addr), "\n")
+	print("pte for this addr is : ", hex(*pte))
+	print("wait for JTAG connection\n")
 	for {
 	}
 }
