@@ -1026,6 +1026,11 @@ func walk_pgdir(pgdir uintptr, va uint32) *uint32 {
 }
 
 //go:nosplit
+func zeropage(pa physaddr) {
+	memclrNoHeapPointers(unsafe.Pointer(uintptr(pa)), uintptr(PGSIZE))
+}
+
+//go:nosplit
 func page_init() {
 	//construct a linked-list of free pages
 	//print("start page init\n")
@@ -1035,11 +1040,13 @@ func page_init() {
 		pa := pgnum2pa(i)
 		pagenfo := pa2page(pa)
 		if pa >= physaddr(RAM_START) && pa < kernelstart {
+			//zeropage(pa)
 			pagenfo.next_pageinfo = nextfree
 			pagenfo.ref = 0
 			nextfree = uintptr(unsafe.Pointer(pagenfo))
 			nfree += 1
 		} else if pa >= physaddr(KERNEL_END) && pa < physaddr(uint32(RAM_START)+uint32(RAM_SIZE)-uint32(ONE_MEG)) {
+			//zeropage(pa)
 			pagenfo.next_pageinfo = nextfree
 			pagenfo.ref = 0
 			nextfree = uintptr(unsafe.Pointer(pagenfo))
@@ -1264,13 +1271,16 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 		}
 	}
 
-	clear := true
+	//Question: what should we do when the runtime calls mmap on addresses that are
+	//already mapped?
+	//clear := true
 	for start := va; start < (va + uintptr(size)); start += uintptr(PGSIZE) {
 		pte := walk_pgdir(kernpgdir, uint32(start))
 		if *pte&0x2 > 0 {
 			//print("mmap_fixed failure for va: ", hex(start), " because it's already mapped\n")
 			//print("pte addr ", hex(uintptr(unsafe.Pointer(pte))), " contents ", hex(*pte), "\n")
-			clear = false
+			//panic(".")
+			//clear = false
 			continue
 		}
 		page := page_alloc()
@@ -1280,18 +1290,19 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 		pa := pageinfo2pa(page) & 0xFFF00000
 		//*pte = uint32(pa) | 0x2 | MEM_NORMAL_SMP
 		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
+		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
 	//showl1table()
 	//print("reloading page table\n")
 	//memclrbytes(unsafe.Pointer(va), uintptr(size))
-	if clear == true {
-		//print("clearing... ")
-		memclrNoHeapPointers(unsafe.Pointer(va), uintptr(size))
-		//memclrbytes(unsafe.Pointer(va), uintptr(size))
-	}
+	//if clear == true {
+	//	//print("clearing... ")
+	//	memclrNoHeapPointers(unsafe.Pointer(va), uintptr(size))
+	//	//memclrbytes(unsafe.Pointer(va), uintptr(size))
+	//}
 	invallpages()
 	DMB()
-	showl1table()
+	//showl1table()
 	maplock.unlock()
 	//print("updated page tables -> ", hex(va), "\n")
 	return unsafe.Pointer(va)
