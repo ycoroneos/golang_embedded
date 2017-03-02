@@ -80,9 +80,6 @@ func makeslice64(et *_type, len64, cap64 int64) slice {
 // TODO: When the old backend is gone, reconsider this decision.
 // The SSA backend might prefer the new length or to return only ptr/cap and save stack space.
 func growslice(et *_type, old slice, cap int) slice {
-	if Armhackmode > 0 {
-		print("growslice ", et, " ", hex(uintptr(old.array)), " ", hex(old.len), " ", hex(old.cap), "\n")
-	}
 	if raceenabled {
 		callerpc := getcallerpc(unsafe.Pointer(&et))
 		racereadrangepc(old.array, uintptr(old.len*int(et.size)), callerpc, funcPC(growslice))
@@ -148,13 +145,7 @@ func growslice(et *_type, old slice, cap int) slice {
 	} else {
 		// Note: can't use rawmem (which avoids zeroing of memory), because then GC can scan uninitialized memory.
 		p = mallocgc(capmem, et, true)
-		if Armhackmode > 0 {
-			print("gc hands out ", hex(uintptr(p)), "\n")
-		}
 		if !writeBarrier.enabled {
-			if Armhackmode > 0 {
-				print("memmove dst ", hex(uintptr(p)), " src ", hex(uintptr(old.array)), " size ", hex(lenmem))
-			}
 			memmove(p, old.array, lenmem)
 		} else {
 			for i := uintptr(0); i < lenmem; i += et.size {

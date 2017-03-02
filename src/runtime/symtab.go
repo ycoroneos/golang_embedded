@@ -278,17 +278,7 @@ func activeModules() []*moduledata {
 // Only one goroutine may call modulesinit at a time.
 func modulesinit() {
 	modules := new([]*moduledata)
-	if Armhackmode > 0 {
-		//pte := walk_pgdir(kernpgdir, uintptr(unsafe.Pointer(modules)))
-		modules_addr := ((*uint32)(unsafe.Pointer(modules)))
-		print("modules : ", modules, " pte : ", hex(*modules_addr), "\n")
-		print("modules ptr : ", hex(uintptr(unsafe.Pointer(&modules))), "\n")
-		print("firstmoduledata ptr : ", hex(uintptr(unsafe.Pointer(&firstmoduledata))), "\n")
-	}
 	for md := &firstmoduledata; md != nil; md = md.next {
-		if Armhackmode > 0 {
-			print("appending ", md, " to ", *modules, "\n")
-		}
 		*modules = append(*modules, md)
 		if md.gcdatamask == (bitvector{}) {
 			md.gcdatamask = progToPointerMask((*byte)(unsafe.Pointer(md.gcdata)), md.edata-md.data)
