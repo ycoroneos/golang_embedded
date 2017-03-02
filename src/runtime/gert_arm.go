@@ -1174,8 +1174,8 @@ func map_kernel() {
 
 //go:nosplit
 func showl1table() {
-	//print("l1 table: ", hex(uint32(l1_table)), "\n")
-	//print("__________________________\n")
+	print("l1 table: ", hex(uint32(l1_table)), "\n")
+	print("__________________________\n")
 	for i := uint32(0); i < 4096; i += 1 {
 		entry := *(*uint32)(unsafe.Pointer((uintptr(l1_table)) + uintptr(i*4)))
 		if entry == 0 {
@@ -1185,7 +1185,7 @@ func showl1table() {
 		perms := entry & 0x3
 		print("\t| entry: ", i, ", base: ", hex(base), " perms: ", hex(perms), "\n")
 	}
-	//print("__________________________\n")
+	print("__________________________\n")
 }
 
 //go:nosplit
@@ -1291,6 +1291,7 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	}
 	invallpages()
 	DMB()
+	showl1table()
 	maplock.unlock()
 	//print("updated page tables -> ", hex(va), "\n")
 	return unsafe.Pointer(va)
