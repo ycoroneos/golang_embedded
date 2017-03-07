@@ -215,6 +215,7 @@ const (
 	CPU_STARTED  = 1
 	CPU_RELEASED = 2
 	CPU_FULL     = 3
+	CPU_DELICATE = 4
 )
 
 var cpustatus [maxcpus]uint32
@@ -363,7 +364,8 @@ func thread_schedule() {
 					//		print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
 					//print(mycpu, "Y ")
 				}
-				cpustatus[mycpu] = CPU_FULL
+				atomic.Store(&cpustatus[mycpu], CPU_FULL)
+				//cpustatus[mycpu] = CPU_FULL
 				lastrun = next
 				invallpages()
 				threadlock.unlock()
@@ -812,8 +814,10 @@ func mp_init() {
 	for *scr&(0x1<<14|0x1<<18) > 0 {
 	}
 	*scr |= 0x1 << 22
-	for cpustatus[1] == CPU_WFI {
+	for atomic.Load(&cpustatus[1]) == CPU_WFI {
 	}
+	//for cpustatus[1] == CPU_WFI {
+	//}
 
 	//cpu2
 	*cpu2bootaddr = entry
@@ -823,7 +827,9 @@ func mp_init() {
 	for *scr&(0x1<<15|0x1<<19) > 0 {
 	}
 	*scr |= 0x1 << 23
-	for cpustatus[2] == CPU_WFI {
+	//	for cpustatus[2] == CPU_WFI {
+	//	}
+	for atomic.Load(&cpustatus[2]) == CPU_WFI {
 	}
 
 	//cpu3
@@ -834,7 +840,9 @@ func mp_init() {
 	for *scr&(0x1<<16|0x1<<20) > 0 {
 	}
 	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
-	for cpustatus[3] == CPU_WFI {
+	//for cpustatus[3] == CPU_WFI {
+	//}
+	for atomic.Load(&cpustatus[3]) == CPU_WFI {
 	}
 	//brk()
 }
@@ -846,8 +854,11 @@ func mp_pen() {
 	me := cpunum()
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
-	cpustatus[me] = CPU_STARTED
-	for stop == 1 {
+	//cpustatus[me] = CPU_STARTED
+	atomic.Store(&cpustatus[me], CPU_STARTED)
+	//	for stop == 1 {
+	//	}
+	for atomic.Load(&cpustatus[me]) != CPU_DELICATE {
 	}
 	//write_uart([]byte("@"))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
@@ -880,22 +891,33 @@ func trampoline() {
 	//print("\tcpu_interface_dentification_register core ", me, " : ", hex(gic_cpu.cpu_interface_dentification_register), "\n")
 	gic_cpu.cpu_interface_control_register = 0x03   // enable everything
 	gic_cpu.interrupt_priority_mask_register = 0xFF //unmask everything
-	cpustatus[me] = CPU_RELEASED
 	//disable_interrupts()
 	threadlock.lock()
+	atomic.Store(&cpustatus[me], CPU_RELEASED)
+	//cpustatus[me] = CPU_RELEASED
 	thread_schedule()
 }
 
 //go:nosplit
 func Release() {
-	stop = 0
-	DMB()
-	for cpustatus[1] < CPU_RELEASED {
+	//stop = 0
+	//	DMB()
+	//	for cpustatus[1] < CPU_RELEASED {
+	//	}
+	//	for cpustatus[2] < CPU_RELEASED {
+	//	}
+	//	for cpustatus[3] < CPU_RELEASED {
+	//	}
+
+	for i := 1; i < 4; i++ {
+		DMB()
+		for atomic.Load(&cpustatus[i]) != CPU_STARTED {
+		}
+		atomic.Store(&cpustatus[i], CPU_DELICATE)
+		for atomic.Load(&cpustatus[i]) != CPU_RELEASED {
+		}
 	}
-	for cpustatus[2] < CPU_RELEASED {
-	}
-	for cpustatus[3] < CPU_RELEASED {
-	}
+
 }
 
 var IRQmsg chan int = make(chan int, 20)
@@ -943,9 +965,6 @@ func cpuabort() {
 	print("data abort on cpu ", me, " from instruction on addr ", hex(addr), ". Faulting memory addr: ", hex(mem_addr), "\n")
 	print("pte for this instruction addr is : ", hex(*pte), "\n")
 	print("pte for the fault addr is : ", hex(*pte_mem), "\n")
-	print("zerobase is ", hex(zerobase))
-	zerobase_addr := uintptr(unsafe.Pointer(&zerobase))
-	print("zerobase addr is ", hex(zerobase_addr))
 	print("wait for JTAG connection\n")
 	WB_DEFAULT_UART.getchar()
 	//	for {
@@ -961,8 +980,7 @@ func cpuprefabort() {
 	print("prefetch abort on cpu ", me, " from addr ", hex(addr), "\n")
 	print("pte for this addr is : ", hex(*pte))
 	print("wait for JTAG connection\n")
-	for {
-	}
+	WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit
@@ -971,8 +989,8 @@ func cpuundefined() {
 	addr := RR0()
 	me := cpunum()
 	print("undefined on cpu ", me, " from addr ", hex(addr), "\n")
-	for {
-	}
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit
@@ -1200,8 +1218,8 @@ func l1_walk() {
 }
 
 type Spinlock_t struct {
-	v      uint32
-	holder int
+	v uint32
+	//holder int
 }
 
 //go:nosplit
@@ -1209,7 +1227,7 @@ func (l *Spinlock_t) lock() {
 	//disable_interrupts()
 	for {
 		if atomic.Cas(&l.v, 0, 1) {
-			l.holder = cpunum()
+			//l.holder = cpunum()
 			//	enable_interrupts()
 			return
 		}
@@ -1218,7 +1236,7 @@ func (l *Spinlock_t) lock() {
 
 //go:nosplit
 func (l *Spinlock_t) unlock() {
-	l.holder = -1
+	//l.holder = -1
 	l.v = 0
 	DMB()
 }

@@ -86,7 +86,7 @@ func gwrite(b []byte) {
 	if len(b) == 0 {
 		return
 	}
-	recordForPanic(b)
+	//	recordForPanic(b)
 	if Armhackmode > 0 {
 		writeErr(b)
 	} else {
