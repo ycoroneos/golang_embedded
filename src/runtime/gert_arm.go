@@ -815,28 +815,28 @@ func mp_init() {
 	for cpustatus[1] == CPU_WFI {
 	}
 
-	//cpu2
-	*cpu2bootaddr = entry
-	*cpu2bootarg = uint32(isr_stack[2])
-	//val = *scr
-	//*scr = val
-	for *scr&(0x1<<15|0x1<<19) > 0 {
-	}
-	*scr |= 0x1 << 23
-	for cpustatus[2] == CPU_WFI {
-	}
-
-	//cpu3
-	*cpu3bootaddr = entry
-	*cpu3bootarg = uint32(isr_stack[3])
-	val := *scr
-	*scr = val
-	for *scr&(0x1<<16|0x1<<20) > 0 {
-	}
-	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
-	for cpustatus[3] == CPU_WFI {
-	}
-	//brk()
+	//	//cpu2
+	//	*cpu2bootaddr = entry
+	//	*cpu2bootarg = uint32(isr_stack[2])
+	//	//val = *scr
+	//	//*scr = val
+	//	for *scr&(0x1<<15|0x1<<19) > 0 {
+	//	}
+	//	*scr |= 0x1 << 23
+	//	for cpustatus[2] == CPU_WFI {
+	//	}
+	//
+	//	//cpu3
+	//	*cpu3bootaddr = entry
+	//	*cpu3bootarg = uint32(isr_stack[3])
+	//	val := *scr
+	//	*scr = val
+	//	for *scr&(0x1<<16|0x1<<20) > 0 {
+	//	}
+	//	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
+	//	for cpustatus[3] == CPU_WFI {
+	//	}
+	//	//brk()
 }
 
 var stop = 1
@@ -892,10 +892,10 @@ func Release() {
 	DMB()
 	for cpustatus[1] < CPU_RELEASED {
 	}
-	for cpustatus[2] < CPU_RELEASED {
-	}
-	for cpustatus[3] < CPU_RELEASED {
-	}
+	//	for cpustatus[2] < CPU_RELEASED {
+	//	}
+	//	for cpustatus[3] < CPU_RELEASED {
+	//	}
 }
 
 var IRQmsg chan int = make(chan int, 20)
