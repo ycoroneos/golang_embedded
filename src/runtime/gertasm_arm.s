@@ -389,14 +389,14 @@ TEXT runtime·boot_any(SB), NOSPLIT, $0
 	MOVW R1, (R0)
 
 	// enable floating point
-	//	WORD $0xee111f50 // mrc	15, 0, r1, cr1, cr0, {2}
-	//	WORD $0xe381160f // orr	r1, r1, #15728640	; 0xf00000
-	//	WORD $0xee011f50 // mcr	15, 0, r1, cr1, cr0, {2}
-	//
-	//	MOVW $0, R1
-	//	WORD $0xee071f95     // mcr	15, 0, r1, cr7, cr5, {4}
-	//	MOVW $0x40000000, R3
-	//	WORD $0xeee83a10     // vmsr	fpexc, r3
+	WORD $0xee111f50 // mrc	15, 0, r1, cr1, cr0, {2}
+	WORD $0xe381160f // orr	r1, r1, #15728640	; 0xf00000
+	WORD $0xee011f50 // mcr	15, 0, r1, cr1, cr0, {2}
+
+	MOVW $0, R1
+	WORD $0xee071f95     // mcr	15, 0, r1, cr7, cr5, {4}
+	MOVW $0x40000000, R3
+	WORD $0xeee83a10     // vmsr	fpexc, r3
 
 	MOVW $0x02020040, R0
 	MOVW $66, R1

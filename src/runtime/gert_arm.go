@@ -941,7 +941,7 @@ func cpucatch() {
 		//	trapfn()
 		//	dropm()
 		//we missed it
-		write_uart([]byte("missed"))
+		//write_uart([]byte("missed"))
 	} else {
 		//	print("LR : ", hex(lr), " cpu ", cpunum(), "\n")
 		//setg(g.m.gsignal)
@@ -1150,8 +1150,8 @@ func map_kernel() {
 			pa := ph.p_pa
 			va := ph.p_va
 			print("\tkernel pa: ", hex(pa), " va: ", hex(va), " size: ", hex(filesz), "\n")
-			//map_region(pa, va, filesz, MEM_NORMAL_SMP)
-			map_region(pa, va, filesz, MEM_TYPE_DEVICE)
+			map_region(pa, va, filesz, MEM_NORMAL_SMP)
+			//map_region(pa, va, filesz, MEM_TYPE_DEVICE)
 		}
 	}
 
@@ -1159,7 +1159,7 @@ func map_kernel() {
 
 	//map the uart
 	//print("mapping uart\n")
-	map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
+	//map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
 
 	//map the timer
 	//print("mapping peripherals + timer\n")
@@ -1171,8 +1171,8 @@ func map_kernel() {
 	if uint32(nextfree) < (uint32(RAM_START) + RAM_SIZE - ONE_MEG) {
 		throw("out of scratch space\n")
 	}
-	//map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_NORMAL_SMP)
-	map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_TYPE_DEVICE)
+	map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_NORMAL_SMP)
+	//map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_TYPE_DEVICE)
 
 	cpustatus[0] = CPU_FULL
 	//map the boot rom
@@ -1306,8 +1306,8 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 			throw("mmap_arm: out of memory\n")
 		}
 		pa := pageinfo2pa(page) & 0xFFF00000
-		//*pte = uint32(pa) | 0x2 | MEM_NORMAL_SMP
-		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
+		*pte = uint32(pa) | 0x2 | MEM_NORMAL_SMP
+		//*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
 		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
 	//showl1table()
