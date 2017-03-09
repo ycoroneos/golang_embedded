@@ -1308,14 +1308,17 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	return unsafe.Pointer(va)
 }
 
+var timelock Spinlock_t
 var curtime int64 = 0
 
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
 	//print("spoof clock_gettime on cpu ", cpunum(), "\n")
+	timelock.lock()
 	ts.tv_sec = int32(curtime >> 32)
 	ts.tv_nsec = int32(curtime & 0xFFFFFFFF)
 	curtime = curtime + 1
+	timelock.unlock()
 }
 
 //go:nosplit
