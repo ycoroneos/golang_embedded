@@ -662,14 +662,17 @@ func clock_init() {
 }
 
 //go:nosplit
-func clock_read() uint64 {
-	for {
-		upper := global_timer.counter_hi
-		lower := global_timer.counter_lo
-		if global_timer.counter_hi == upper {
-			return (uint64(upper) << 32) | uint64(lower)
-		}
+func clock_read() (uint32, uint32) {
+	var upper uint32
+	var lower uint32
+again:
+	upper = global_timer.counter_hi
+	lower = global_timer.counter_lo
+	up2 := global_timer.counter_hi
+	if up2 != upper {
+		goto again
 	}
+	return upper, lower
 }
 
 //go:nosplit
@@ -1350,10 +1353,15 @@ var timelock Spinlock_t
 func clk_gettime(clock_type uint32, ts *timespec) {
 	//print("spoof clock_gettime on cpu ", cpunum(), "\n")
 	timelock.lock()
-	ticks := clock_read()
-	nsec := (ticks * 2) / 792000000
-	ts.tv_sec = int32((nsec & 0xFFFFFFFF00000000) / 1000000000)
-	ts.tv_nsec = int32(nsec & 0xFFFFFFFF)
+	//ticks := clock_read()
+	_, lo := clock_read()
+	//nsec := (ticks * 2) / 792000000
+	//nsec := ticks
+	//ts.tv_sec = int32((nsec & 0xFFFFFFFF00000000) / 1000000000)
+	//ts.tv_nsec = int32(nsec & 0xFFFFFFFF)
+	//ts.tv_sec = int32(hi)
+	ts.tv_sec = int32(lo)
+	ts.tv_nsec = int32(lo)
 	timelock.unlock()
 }
 
