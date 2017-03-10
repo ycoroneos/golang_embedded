@@ -65,6 +65,7 @@ TEXT runtime·rt0_go(SB), NOSPLIT, $-4
 	BL   runtime·checkgoarm(SB)
 	BL   runtime·osinit(SB)
 	MOVW R13, runtime·bootstack(SB)
+	BL   runtime·clock_init(SB)
 	BL   runtime·mem_init(SB)
 	BL   runtime·map_kernel(SB)
 	BL   runtime·mp_init(SB)

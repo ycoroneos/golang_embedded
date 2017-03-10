@@ -649,6 +649,29 @@ func boot_alloc(size uint32) physaddr {
 	return result
 }
 
+/*
+* Turn on the 64bit ARM global timer.
+*It will never roll over unless gert runs for over 1000 years.
+ */
+//go:nosplit
+func clock_init() {
+	global_timer.control = 0
+	global_timer.counter_lo = 0
+	global_timer.counter_hi = 0
+	global_timer.control = 1
+}
+
+//go:nosplit
+func clock_read() uint64 {
+	for {
+		upper := global_timer.counter_hi
+		lower := global_timer.counter_lo
+		if global_timer.counter_hi == upper {
+			return (uint64(upper) << 32) | uint64(lower)
+		}
+	}
+}
+
 //go:nosplit
 func mem_init() {
 	//print("mem init: ", hex(RAM_SIZE), " bytes of ram\n")
@@ -747,6 +770,19 @@ func getundefined() uint32
 const Mpcorebase uintptr = uintptr(0xA00000)
 
 var scubase uintptr = Mpcorebase + 0x0
+var globaltimerbase uintptr = Mpcorebase + 0x200
+
+type GlobalTimer_regs struct {
+	counter_lo uint32
+	counter_hi uint32
+	control    uint32
+	intr       uint32
+	compare_lo uint32
+	compare_hi uint32
+	auto_inc   uint32
+}
+
+var global_timer *GlobalTimer_regs = ((*GlobalTimer_regs)(unsafe.Pointer(globaltimerbase)))
 
 //1:0x20d8028 2:0x20d8030 3:0x20d8038 scr:0x20d8000
 
@@ -1309,15 +1345,15 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 }
 
 var timelock Spinlock_t
-var curtime int64 = 0
 
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
 	//print("spoof clock_gettime on cpu ", cpunum(), "\n")
 	timelock.lock()
-	ts.tv_sec = int32(curtime >> 32)
-	ts.tv_nsec = int32(curtime & 0xFFFFFFFF)
-	curtime = curtime + 1
+	ticks := clock_read()
+	nsec := (ticks * 2) / 792000000
+	ts.tv_sec = int32((nsec & 0xFFFFFFFF00000000) / 1000000000)
+	ts.tv_nsec = int32(nsec & 0xFFFFFFFF)
 	timelock.unlock()
 }
 
