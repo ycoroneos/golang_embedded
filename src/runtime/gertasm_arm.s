@@ -14,6 +14,14 @@
 #define ACTLR_L2_PREFETCH $0x2
 #define ACTLR_FW $0x1
 
+TEXT runtime·Mull64(SB), NOSPLIT, $0
+	MOVW a+0(FP), R1
+	MOVW b+4(FP), R2
+	WORD $0xe0843291      // umull r3, r4, r1, r2
+	MOVW R3, rethi+8(FP)
+	MOVW R4, retlo+12(FP)
+	RET
+
 TEXT runtime·PutR0(SB), NOSPLIT, $0-4
 	MOVW ret+4(FP), R0
 	RET

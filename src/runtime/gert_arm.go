@@ -770,6 +770,9 @@ func undefined()
 //go:nosplit
 func getundefined() uint32
 
+//go:nosplit
+func Mull64(a, b uint32) (uint32, uint32)
+
 const Mpcorebase uintptr = uintptr(0xA00000)
 
 var scubase uintptr = Mpcorebase + 0x0
@@ -786,6 +789,16 @@ type GlobalTimer_regs struct {
 }
 
 var global_timer *GlobalTimer_regs = ((*GlobalTimer_regs)(unsafe.Pointer(globaltimerbase)))
+
+//var ns_per_clock_num uint32 = 2
+//var ns_per_clock_denom uint32 = 792000000MHz
+//var ns_per_clock_num uint32 = 2525
+//var ns_per_clock_denom uint32 = 1000
+//var sec_per_ns_denom uint32 = 1000000000
+
+var ns_per_clock_num uint32 = 5
+var ns_per_clock_denom uint32 = 2
+var sec_per_ns_denom uint32 = 1000000000
 
 //1:0x20d8028 2:0x20d8030 3:0x20d8038 scr:0x20d8000
 
@@ -1349,19 +1362,61 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 
 var timelock Spinlock_t
 
+var curtime = 0
+
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
 	//print("spoof clock_gettime on cpu ", cpunum(), "\n")
 	timelock.lock()
-	//ticks := clock_read()
-	_, lo := clock_read()
-	//nsec := (ticks * 2) / 792000000
-	//nsec := ticks
-	//ts.tv_sec = int32((nsec & 0xFFFFFFFF00000000) / 1000000000)
-	//ts.tv_nsec = int32(nsec & 0xFFFFFFFF)
-	//ts.tv_sec = int32(hi)
-	ts.tv_sec = int32(lo)
-	ts.tv_nsec = int32(lo)
+	//ticks_per_sec := 0x9502f900
+	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
+	//hi, lo := clock_read()
+	//print("clock hi : ", hex(hi), " clock lo : ", hex(lo), "\n")
+	//print("clock hi : ", hex(hi), "\n")
+	//nsec := uint32(((lo * 5) / 2) % 1000000000)
+	//extra := (lo - nsec) / 1000000000
+	//sec := ((hi * 43) / 4) // + extra
+
+	//	//get ns from the lo counter
+	//	nslo, nshi := Mull64(lo, ns_per_clock_num)
+	//	//now divide by 2
+	//	nslo = nslo >> 1
+	//	nslo = nslo & uint32(0x7FFFFFFF)
+	//	nslo = nslo | ((nshi & 0x1) << 31)
+	//	nshi = nshi >> 1
+	//	nshi = nshi & uint32(0x7FFFFFFF)
+	//	acc_hi = nshi
+	//	acc_lo = nslo
+	//
+	//	//the math below will overflow every 590years
+	//	//0xFFFFFFFF*2/5 = 0x66666666 ... coincidence?
+	//	nshi = (hi * 5) / 2 //if this overflows we're screwed
+	//	nslo, nshi = Mull64(nshi, 1000000000)
+	//
+	//	carry := uint32(0)
+	//	res_lo := nslo + acc_lo
+	//	if res_lo < nslo || res_lo < acc_lo {
+	//		//overflow
+	//		carry = 1
+	//	}
+	//	acc_lo = res_lo
+	//	acc_hi = acc_hi + nshi + carry
+	//
+	//	nsec := acc_lo % 1000000000
+	//	acc_lo -= nsec
+	//
+	//	sec_lo := acc_lo / 1000000000
+	//
+	//	//2^32 / 1e9 ~= 4398 / 1024
+	//
+	//	sec_hi := (acc_hi * 4398) / 1024
+
+	//print("sec : ", sec, " nsec : ", nsec, "\n")
+	//ts.tv_sec = int32(sec)
+	//ts.tv_nsec = int32(nsec)
+	ts.tv_sec = int32(curtime)
+	ts.tv_nsec = 0
+	curtime += 1
 	timelock.unlock()
 }
 
