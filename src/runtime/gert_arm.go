@@ -231,11 +231,12 @@ type trapframe struct {
 }
 
 type thread_t struct {
-	tf      trapframe
-	state   uint32
-	futaddr uintptr
-	id      uint32
-	lock    Spinlock_t
+	tf       trapframe
+	state    uint32
+	futaddr  uintptr
+	sleeptil timespec
+	id       uint32
+	lock     Spinlock_t
 }
 
 // maximum # of runtime "OS" threads
@@ -312,6 +313,8 @@ var threadlock Spinlock_t
 
 //var threadlock Ticketlock_t
 
+var thread_time timespec
+
 //go:nosplit
 func thread_schedule() {
 	//write_uart([]byte("!"))
@@ -325,34 +328,19 @@ func thread_schedule() {
 			if btrace == true {
 				print(mycpu)
 			}
-			//print("\n\t", mycpu, "\n")
-			//	print("cpu ", cpunum(), "\n\t")
-			//	print("thread scheduler cpu ", mycpu, "\n")
-			//print("curthread base is ", hex(uintptr(unsafe.Pointer(&curthread[0]))), "\n")
-			//print("curthread base +1 is ", hex(uintptr(unsafe.Pointer(&curthread[1]))), "\n")
-			//	print("just entered from thread ", curthread[mycpu].id, " with LR ", hex(curthread[mycpu].tf.lr), "\n")
 		}
-		//start looking after the current thread id
-		//	lastrun = (lastrun + 1) % maxthreads
-		//	for ; lastrun < maxthreads; lastrun = (lastrun + 1) % maxthreads {
-		//		if threads[lastrun].state == ST_RUNNABLE {
-		//			//grab the thread lock
-		//			//threads[lastrun].lock.lock()
-		//			threads[lastrun].state = ST_RUNNING
-		//			curthread[mycpu] = &threads[lastrun]
-		//			if cpustatus[mycpu] == CPU_FULL {
-		//				//print("\t\t\t\tschedule thread ", lastrun, " on cpu ", mycpu, "\n")
-		//				//print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
-		//			}
-		//			cpustatus[mycpu] = CPU_FULL
-		//			invallpages()
-		//			//threadlock.unlock()
-		//			ReplayTrapframe(curthread[mycpu])
-		//			throw("should never be here\n")
-		//		}
-		//	}
-		//lastrun = (lastrun + 1) % maxthreads
+		//check if any futex timed out
+		clk_gettime(0, &thread_time)
 		for next := (lastrun + 1) % maxthreads; next != lastrun; next = (next + 1) % maxthreads {
+			if threads[next].state == ST_SLEEPING {
+				if thread_time.tv_sec >= threads[next].sleeptil.tv_sec {
+					threads[next].state = ST_RUNNABLE
+					threads[next].futaddr = 0
+					threads[next].tf.r0 = 0
+					threads[next].sleeptil.tv_sec = 0
+					threads[next].sleeptil.tv_nsec = 0
+				}
+			}
 			if threads[next].state == ST_RUNNABLE {
 				//grab the thread lock
 				//threads[lastrun].lock.lock()
@@ -428,6 +416,8 @@ func return_here() {
 	Threadschedule()
 }
 
+var temptime timespec
+
 //go:nosplit
 func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, val2 int32) int32 {
 	FUTEX_WAIT := int32(0)
@@ -444,6 +434,14 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 			threadlock.lock()
 			curthread[mycpu].state = ST_SLEEPING
 			curthread[mycpu].futaddr = uaddrn
+			curthread[mycpu].sleeptil.tv_sec = 0
+			curthread[mycpu].sleeptil.tv_nsec = 0
+			if to != nil {
+				clk_gettime(0, &temptime)
+				curthread[mycpu].sleeptil.tv_sec = temptime.tv_sec + to.tv_sec
+				curthread[mycpu].sleeptil.tv_nsec = temptime.tv_nsec + to.tv_nsec
+				//print("now: ", temptime.tv_sec, " ", temptime.tv_nsec, " wait till ", curthread[mycpu].sleeptil.tv_sec, "\n")
+			}
 			//print("thread ", curthread[mycpu].id, " sleeps on cpu ", mycpu, "\n")
 			Threadschedule()
 			//print("thread ", curthread[cpunum()].id, " wakes on cpu ", cpunum(), "\n")
@@ -661,19 +659,19 @@ func clock_init() {
 	global_timer.control = 1
 }
 
-//go:nosplit
-func clock_read() (uint32, uint32) {
-	var upper uint32
-	var lower uint32
-again:
-	upper = global_timer.counter_hi
-	lower = global_timer.counter_lo
-	up2 := global_timer.counter_hi
-	if up2 != upper {
-		goto again
-	}
-	return upper, lower
-}
+////go:nosplit
+//func clock_read() (uint32, uint32) {
+//	var upper uint32
+//	var lower uint32
+//again:
+//	upper = Getloc(globaltimerbase + 0x4)
+//	lower = Getloc(globaltimerbase + 0x0)
+//	up2 := Getloc(globaltimerbase + 0x4)
+//	if up2 != upper {
+//		goto again
+//	}
+//	return upper, lower
+//}
 
 //go:nosplit
 func mem_init() {
@@ -773,6 +771,12 @@ func getundefined() uint32
 //go:nosplit
 func Mull64(a, b uint32) (uint32, uint32)
 
+//go:nosplit
+func Getloc(loc uint32) uint32
+
+//go:nosplit
+func ReadClock(hi, low uintptr) (uint32, uint32)
+
 const Mpcorebase uintptr = uintptr(0xA00000)
 
 var scubase uintptr = Mpcorebase + 0x0
@@ -867,28 +871,28 @@ func mp_init() {
 	for cpustatus[1] == CPU_WFI {
 	}
 
-	//	//cpu2
-	//	*cpu2bootaddr = entry
-	//	*cpu2bootarg = uint32(isr_stack[2])
-	//	//val = *scr
-	//	//*scr = val
-	//	for *scr&(0x1<<15|0x1<<19) > 0 {
-	//	}
-	//	*scr |= 0x1 << 23
-	//	for cpustatus[2] == CPU_WFI {
-	//	}
-	//
-	//	//cpu3
-	//	*cpu3bootaddr = entry
-	//	*cpu3bootarg = uint32(isr_stack[3])
-	//	val := *scr
-	//	*scr = val
-	//	for *scr&(0x1<<16|0x1<<20) > 0 {
-	//	}
-	//	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
-	//	for cpustatus[3] == CPU_WFI {
-	//	}
-	//	//brk()
+	//cpu2
+	*cpu2bootaddr = entry
+	*cpu2bootarg = uint32(isr_stack[2])
+	//val = *scr
+	//*scr = val
+	for *scr&(0x1<<15|0x1<<19) > 0 {
+	}
+	*scr |= 0x1 << 23
+	for cpustatus[2] == CPU_WFI {
+	}
+
+	//cpu3
+	*cpu3bootaddr = entry
+	*cpu3bootarg = uint32(isr_stack[3])
+	val := *scr
+	*scr = val
+	for *scr&(0x1<<16|0x1<<20) > 0 {
+	}
+	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
+	for cpustatus[3] == CPU_WFI {
+	}
+	//brk()
 }
 
 var stop = 1
@@ -944,10 +948,10 @@ func Release() {
 	DMB()
 	for cpustatus[1] < CPU_RELEASED {
 	}
-	//	for cpustatus[2] < CPU_RELEASED {
-	//	}
-	//	for cpustatus[3] < CPU_RELEASED {
-	//	}
+	for cpustatus[2] < CPU_RELEASED {
+	}
+	for cpustatus[3] < CPU_RELEASED {
+	}
 }
 
 var IRQmsg chan int = make(chan int, 20)
@@ -1362,7 +1366,7 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 
 var timelock Spinlock_t
 
-var curtime = 0
+//var curtime = 0
 
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
@@ -1370,12 +1374,12 @@ func clk_gettime(clock_type uint32, ts *timespec) {
 	timelock.lock()
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
-	//hi, lo := clock_read()
+	hi, lo := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
 	//print("clock hi : ", hex(hi), " clock lo : ", hex(lo), "\n")
 	//print("clock hi : ", hex(hi), "\n")
-	//nsec := uint32(((lo * 5) / 2) % 1000000000)
+	nsec := uint32(((lo * 5) / 2) % 1000000000)
 	//extra := (lo - nsec) / 1000000000
-	//sec := ((hi * 43) / 4) // + extra
+	sec := ((hi * 43) / 4)
 
 	//	//get ns from the lo counter
 	//	nslo, nshi := Mull64(lo, ns_per_clock_num)
@@ -1412,11 +1416,11 @@ func clk_gettime(clock_type uint32, ts *timespec) {
 	//	sec_hi := (acc_hi * 4398) / 1024
 
 	//print("sec : ", sec, " nsec : ", nsec, "\n")
-	//ts.tv_sec = int32(sec)
-	//ts.tv_nsec = int32(nsec)
-	ts.tv_sec = int32(curtime)
-	ts.tv_nsec = 0
-	curtime += 1
+	ts.tv_sec = int32(sec)
+	ts.tv_nsec = int32(nsec)
+	//ts.tv_sec = int32(curtime)
+	//ts.tv_nsec = 0
+	//curtime += 1
 	timelock.unlock()
 }
 

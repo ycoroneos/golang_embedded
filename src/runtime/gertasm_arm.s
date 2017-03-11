@@ -14,6 +14,26 @@
 #define ACTLR_L2_PREFETCH $0x2
 #define ACTLR_FW $0x1
 
+TEXT runtime·ReadClock(SB), NOSPLIT, $0
+	MOVW hi+0(FP), R1
+	MOVW lo+4(FP), R2
+
+readagain:
+	MOVW (R1), R3
+	MOVW (R2), R4
+	MOVW (R1), R5
+	CMP  R5, R3
+	BNE  readagain
+	MOVW R3, rethi+8(FP)
+	MOVW R4, retlo+12(FP)
+	RET
+
+TEXT runtime·Getloc(SB), NOSPLIT, $0
+	MOVW loc+0(FP), R1
+	MOVW (R1), R1
+	MOVW R1, ret+4(FP)
+	RET
+
 TEXT runtime·Mull64(SB), NOSPLIT, $0
 	MOVW a+0(FP), R1
 	MOVW b+4(FP), R2
