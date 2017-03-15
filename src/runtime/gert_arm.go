@@ -858,41 +858,50 @@ func mp_init() {
 	entry := getentry()
 	//replace the push lr at the start of entry with a nop
 	*((*uint32)(unsafe.Pointer(uintptr(entry)))) = NOP
-
 	//cpu1
 	*cpu1bootaddr = entry
 	*cpu1bootarg = uint32(isr_stack[1])
-	//val := *scr
-	//*scr = val
-	DMB()
-	for *scr&(0x1<<14|0x1<<18) > 0 {
-	}
-	*scr |= 0x1 << 22
-	for cpustatus[1] == CPU_WFI {
-	}
-
 	//cpu2
 	*cpu2bootaddr = entry
 	*cpu2bootarg = uint32(isr_stack[2])
-	//val = *scr
-	//*scr = val
-	for *scr&(0x1<<15|0x1<<19) > 0 {
-	}
-	*scr |= 0x1 << 23
-	for cpustatus[2] == CPU_WFI {
-	}
-
 	//cpu3
 	*cpu3bootaddr = entry
 	*cpu3bootarg = uint32(isr_stack[3])
-	val := *scr
-	*scr = val
-	for *scr&(0x1<<16|0x1<<20) > 0 {
-	}
-	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
-	for cpustatus[3] == CPU_WFI {
-	}
-	//brk()
+
+	//	//cpu1
+	//	*cpu1bootaddr = entry
+	//	*cpu1bootarg = uint32(isr_stack[1])
+	//	//val := *scr
+	//	//*scr = val
+	//	DMB()
+	//	for *scr&(0x1<<14|0x1<<18) > 0 {
+	//	}
+	//	*scr |= 0x1 << 22
+	//	for cpustatus[1] == CPU_WFI {
+	//	}
+	//
+	//	//cpu2
+	//	*cpu2bootaddr = entry
+	//	*cpu2bootarg = uint32(isr_stack[2])
+	//	//val = *scr
+	//	//*scr = val
+	//	for *scr&(0x1<<15|0x1<<19) > 0 {
+	//	}
+	//	*scr |= 0x1 << 23
+	//	for cpustatus[2] == CPU_WFI {
+	//	}
+	//
+	//	//cpu3
+	//	*cpu3bootaddr = entry
+	//	*cpu3bootarg = uint32(isr_stack[3])
+	//	val := *scr
+	//	*scr = val
+	//	for *scr&(0x1<<16|0x1<<20) > 0 {
+	//	}
+	//	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
+	//	for cpustatus[3] == CPU_WFI {
+	//	}
+	//	//brk()
 }
 
 var stop = 1
@@ -903,10 +912,10 @@ func mp_pen() {
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
 	cpustatus[me] = CPU_STARTED
-	for stop == 1 {
-	}
-	//write_uart([]byte("@"))
-	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
+	//for stop == 1 {
+	//}
+	////write_uart([]byte("@"))
+	//loadttbr0(unsafe.Pointer(uintptr(l1_table)))
 	trampoline()
 	throw("cpu release\n")
 }
@@ -943,14 +952,26 @@ func trampoline() {
 }
 
 //go:nosplit
-func Release() {
-	stop = 0
-	DMB()
-	for cpustatus[1] < CPU_RELEASED {
-	}
-	for cpustatus[2] < CPU_RELEASED {
-	}
-	for cpustatus[3] < CPU_RELEASED {
+func Release(ncpu uint) {
+	//	stop = 0
+	//	DMB()
+	//	for cpustatus[1] < CPU_RELEASED {
+	//	}
+	//	for cpustatus[2] < CPU_RELEASED {
+	//	}
+	//	for cpustatus[3] < CPU_RELEASED {
+	//	}
+
+	//boot n cpus
+	start := uint(1)
+	for cpu := start; cpu < start+ncpu; cpu++ {
+		print("boot cpu ", cpu, " ... ")
+		for *scr&(0x1<<(13+cpu)|0x1<<(17+cpu)) > 0 {
+		}
+		*scr |= 0x1 << (21 + cpu)
+		for cpustatus[cpu] == CPU_WFI {
+		}
+		print("done!\n")
 	}
 }
 
