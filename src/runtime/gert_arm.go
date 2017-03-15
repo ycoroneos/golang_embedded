@@ -1370,66 +1370,17 @@ var timelock Spinlock_t
 
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
-	//print("spoof clock_gettime on cpu ", cpunum(), "\n")
 	timelock.lock()
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
-	//hi, lo := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
 	ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
-	//nsec := (ticks * 5) / 2
 	nsec := (ticks * 5) >> 1
 	sec := 0
 	for ; nsec >= 1000000000; nsec -= 1000000000 {
 		sec += 1
 	}
-	//sec := nsec / 1000000000
-	//nsec = nsec % 1000000000
-	//print("clock hi : ", hex(hi), " clock lo : ", hex(lo), "\n")
-	//print("clock hi : ", hex(hi), "\n")
-	//nsec := uint32(((lo * 5) / 2) % 1000000000)
-	//extra := (lo - nsec) / 1000000000
-	//sec := ((hi * 43) / 4)
-
-	//	//get ns from the lo counter
-	//	nslo, nshi := Mull64(lo, ns_per_clock_num)
-	//	//now divide by 2
-	//	nslo = nslo >> 1
-	//	nslo = nslo & uint32(0x7FFFFFFF)
-	//	nslo = nslo | ((nshi & 0x1) << 31)
-	//	nshi = nshi >> 1
-	//	nshi = nshi & uint32(0x7FFFFFFF)
-	//	acc_hi = nshi
-	//	acc_lo = nslo
-	//
-	//	//the math below will overflow every 590years
-	//	//0xFFFFFFFF*2/5 = 0x66666666 ... coincidence?
-	//	nshi = (hi * 5) / 2 //if this overflows we're screwed
-	//	nslo, nshi = Mull64(nshi, 1000000000)
-	//
-	//	carry := uint32(0)
-	//	res_lo := nslo + acc_lo
-	//	if res_lo < nslo || res_lo < acc_lo {
-	//		//overflow
-	//		carry = 1
-	//	}
-	//	acc_lo = res_lo
-	//	acc_hi = acc_hi + nshi + carry
-	//
-	//	nsec := acc_lo % 1000000000
-	//	acc_lo -= nsec
-	//
-	//	sec_lo := acc_lo / 1000000000
-	//
-	//	//2^32 / 1e9 ~= 4398 / 1024
-	//
-	//	sec_hi := (acc_hi * 4398) / 1024
-
-	//print("sec : ", sec, " nsec : ", nsec, "\n")
 	ts.tv_sec = int32(sec)
 	ts.tv_nsec = int32(nsec)
-	//ts.tv_sec = int32(curtime)
-	//ts.tv_nsec = 0
-	//curtime += 1
 	timelock.unlock()
 }
 
