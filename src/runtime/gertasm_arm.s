@@ -24,8 +24,8 @@ readagain:
 	MOVW (R1), R5
 	CMP  R5, R3
 	BNE  readagain
-	MOVW R3, rethi+8(FP)
-	MOVW R4, retlo+12(FP)
+	MOVW R3, ret_hi+12(FP)
+	MOVW R4, ret_lo+8(FP)
 	RET
 
 TEXT runtime·Getloc(SB), NOSPLIT, $0

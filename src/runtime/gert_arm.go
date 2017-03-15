@@ -333,7 +333,7 @@ func thread_schedule() {
 		clk_gettime(0, &thread_time)
 		for next := (lastrun + 1) % maxthreads; next != lastrun; next = (next + 1) % maxthreads {
 			if threads[next].state == ST_SLEEPING {
-				if thread_time.tv_sec >= threads[next].sleeptil.tv_sec {
+				if (thread_time.tv_sec >= threads[next].sleeptil.tv_sec) || (thread_time.tv_sec == threads[next].sleeptil.tv_sec && thread_time.tv_nsec >= threads[next].sleeptil.tv_nsec) {
 					threads[next].state = ST_RUNNABLE
 					threads[next].futaddr = 0
 					threads[next].tf.r0 = 0
@@ -775,7 +775,7 @@ func Mull64(a, b uint32) (uint32, uint32)
 func Getloc(loc uint32) uint32
 
 //go:nosplit
-func ReadClock(hi, low uintptr) (uint32, uint32)
+func ReadClock(hi, low uintptr) int64
 
 const Mpcorebase uintptr = uintptr(0xA00000)
 
@@ -1374,12 +1374,21 @@ func clk_gettime(clock_type uint32, ts *timespec) {
 	timelock.lock()
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
-	hi, lo := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
+	//hi, lo := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
+	ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
+	//nsec := (ticks * 5) / 2
+	nsec := (ticks * 5) >> 1
+	sec := 0
+	for ; nsec >= 1000000000; nsec -= 1000000000 {
+		sec += 1
+	}
+	//sec := nsec / 1000000000
+	//nsec = nsec % 1000000000
 	//print("clock hi : ", hex(hi), " clock lo : ", hex(lo), "\n")
 	//print("clock hi : ", hex(hi), "\n")
-	nsec := uint32(((lo * 5) / 2) % 1000000000)
+	//nsec := uint32(((lo * 5) / 2) % 1000000000)
 	//extra := (lo - nsec) / 1000000000
-	sec := ((hi * 43) / 4)
+	//sec := ((hi * 43) / 4)
 
 	//	//get ns from the lo counter
 	//	nslo, nshi := Mull64(lo, ns_per_clock_num)
