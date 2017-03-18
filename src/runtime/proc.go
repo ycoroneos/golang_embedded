@@ -122,9 +122,21 @@ func main() {
 	// Record when the world started.
 	runtimeInitTime = nanotime()
 
-	systemstack(func() {
-		newm(sysmon, nil)
-	})
+	yieldmon := func() {
+		for {
+			osyield()
+		}
+	}
+
+	if Armhackmode > 0 {
+		systemstack(func() {
+			newm(yieldmon, nil)
+		})
+	} else {
+		systemstack(func() {
+			newm(sysmon, nil)
+		})
+	}
 
 	// Lock the main goroutine onto this, the main OS thread,
 	// during initialization. Most programs won't care, but a few
@@ -3716,6 +3728,11 @@ var forcegcperiod int64 = 2 * 60 * 1e9
 //
 //go:nowritebarrierrec
 func sysmon() {
+
+	if Armhackmode > 0 {
+		print("SYSMON\n")
+	}
+
 	// If a heap span goes unused for 5 minutes after a garbage collection,
 	// we hand it back to the operating system.
 	scavengelimit := int64(5 * 60 * 1e9)
@@ -3794,6 +3811,9 @@ func sysmon() {
 			lock(&forcegc.lock)
 			forcegc.idle = 0
 			forcegc.g.schedlink = 0
+			if Armhackmode > 0 {
+				print("FORCE GC\n")
+			}
 			injectglist(forcegc.g)
 			unlock(&forcegc.lock)
 		}
@@ -3807,6 +3827,9 @@ func sysmon() {
 			lasttrace = now
 			schedtrace(debug.scheddetail > 0)
 		}
+	}
+	if Armhackmode > 0 {
+		print("SYSMON done\n")
 	}
 }
 
@@ -3830,6 +3853,8 @@ func retake(now int64) uint32 {
 		}
 		pd := &pdesc[i]
 		s := _p_.status
+		//never retake from a syscall in GERT mode
+		//if s == _Psyscall && Armhackmode == 0 {
 		if s == _Psyscall {
 			// Retake P from syscall if it's there for more than 1 sysmon tick (at least 20us).
 			t := int64(_p_.syscalltick)
@@ -3872,6 +3897,9 @@ func retake(now int64) uint32 {
 			}
 			preemptone(_p_)
 		}
+	}
+	if Armhackmode > 0 && n > 0 {
+		print("pre-empted ", n, " goroutines\n")
 	}
 	return uint32(n)
 }

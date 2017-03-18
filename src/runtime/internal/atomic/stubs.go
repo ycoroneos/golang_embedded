@@ -9,6 +9,9 @@ import "unsafe"
 //go:noescape
 func Cas(ptr *uint32, old, new uint32) bool
 
+//go:noescape
+func ReCas(ptr *uint32, old, new uint32) bool
+
 // NO go:noescape annotation; see atomic_pointer.go.
 func Casp1(ptr *unsafe.Pointer, old, new unsafe.Pointer) bool
 

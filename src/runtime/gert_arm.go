@@ -73,9 +73,11 @@ func trap_debug() {
 		////print("spoofing write on: ", arg0, "\n")
 		ret := uint32(0xffffffff)
 		if arg0 == 1 || arg0 == 2 {
-			writelock.lock()
+			//writelock.lock()
+			splock(&writelock)
 			ret = write_uart_unsafe(uintptr(arg1), arg2)
-			writelock.unlock()
+			spunlock(&writelock)
+			//writelock.unlock()
 		} else {
 		}
 		PutR0(ret)
@@ -98,7 +100,8 @@ func trap_debug() {
 		//throw("select")
 		if !panicpanic {
 			//disable_interrupts()
-			threadlock.lock()
+			//threadlock.lock()
+			splock(threadlock)
 			curthread[cpunum()].state = ST_RUNNABLE
 			//print("thread ", curthread[cpunum()].id, " is now runnable\n")
 			//Threadschedule()
@@ -110,7 +113,8 @@ func trap_debug() {
 	case 158:
 		//print("spoofing sys sched yield on cpu ", cpunum(), "\n")
 		//disable_interrupts()
-		threadlock.lock()
+		//threadlock.lock()
+		splock(threadlock)
 		curthread[cpunum()].state = ST_RUNNABLE
 		return_here()
 		//print("sys yield returns on cpu ", cpunum(), "\n")
@@ -309,7 +313,7 @@ func makethread(flags uint32, stack uintptr, entry uintptr) int {
 
 var lastrun = 0
 
-var threadlock Spinlock_t
+var threadlock *Spinlock_t
 
 //var threadlock Ticketlock_t
 
@@ -347,14 +351,18 @@ func thread_schedule() {
 				threads[next].state = ST_RUNNING
 				curthread[mycpu] = &threads[next]
 				if cpustatus[mycpu] == CPU_FULL {
-					//print("\t\t\t\tschedule thread ", next, " on cpu ", mycpu, "\n")
-					//		print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
+					//			print("\t\t\t\tschedule thread ", next, " on cpu ", mycpu, "\n")
+					//			print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
 					//print(mycpu, "Y ")
 				}
 				cpustatus[mycpu] = CPU_FULL
 				lastrun = next
 				invallpages()
-				threadlock.unlock()
+				spunlock(threadlock)
+				//threadlock.unlock()
+				if uintptr(unsafe.Pointer(curthread[mycpu])) == 0 || curthread[mycpu] == nil {
+					panic("trapframe is null")
+				}
 				ReplayTrapframe(curthread[mycpu])
 				throw("should never be here\n")
 			}
@@ -372,17 +380,23 @@ func thread_schedule() {
 			cpustatus[mycpu] = CPU_FULL
 			lastrun = lastrun
 			invallpages()
-			threadlock.unlock()
+			spunlock(threadlock)
+			//threadlock.unlock()
+			if uintptr(unsafe.Pointer(curthread[mycpu])) == 0 || curthread[mycpu] == nil {
+				panic("trapframe is null")
+			}
 			ReplayTrapframe(curthread[mycpu])
 			throw("should never be here\n")
 		}
 		//drop to idle
-		threadlock.unlock()
+		spunlock(threadlock)
+		//threadlock.unlock()
 		if cpustatus[mycpu] == CPU_FULL {
 			//print(mycpu, "N ")
 		}
 		idle()
-		threadlock.lock()
+		splock(threadlock)
+		//threadlock.lock()
 	}
 	throw("no runnable threads. what happened?\n")
 }
@@ -431,7 +445,8 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 		if dosleep {
 			//enter thread scheduler
 			//disable_interrupts()
-			threadlock.lock()
+			//threadlock.lock()
+			splock(threadlock)
 			curthread[mycpu].state = ST_SLEEPING
 			curthread[mycpu].futaddr = uaddrn
 			curthread[mycpu].sleeptil.tv_sec = 0
@@ -443,12 +458,13 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 				//print("now: ", temptime.tv_sec, " ", temptime.tv_nsec, " wait till ", curthread[mycpu].sleeptil.tv_sec, "\n")
 			}
 			//print("thread ", curthread[mycpu].id, " sleeps on cpu ", mycpu, "\n")
-			Threadschedule()
+			//Threadschedule()
+			return_here()
 			//print("thread ", curthread[cpunum()].id, " wakes on cpu ", cpunum(), "\n")
 			//print("Crash ", Crash, "\n")
-			if curthread[cpunum()].id == 1 && cpunum() == 1 && Crash == true {
-				bkpt()
-			}
+			//if curthread[cpunum()].id == 1 && cpunum() == 1 && Crash == true {
+			//	bkpt()
+			//}
 			//returns with retval in r0
 			ret = int(RR0())
 		} else {
@@ -469,6 +485,7 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 				//t.sleepret = 0
 				val--
 				woke++
+				//print("woke futex with lr: ", hex(t.tf.lr), "\n")
 			}
 		}
 		////print("futex woke ", woke, " threads\n")
@@ -659,20 +676,6 @@ func clock_init() {
 	global_timer.control = 1
 }
 
-////go:nosplit
-//func clock_read() (uint32, uint32) {
-//	var upper uint32
-//	var lower uint32
-//again:
-//	upper = Getloc(globaltimerbase + 0x4)
-//	lower = Getloc(globaltimerbase + 0x0)
-//	up2 := Getloc(globaltimerbase + 0x4)
-//	if up2 != upper {
-//		goto again
-//	}
-//	return upper, lower
-//}
-
 //go:nosplit
 func mem_init() {
 	//print("mem init: ", hex(RAM_SIZE), " bytes of ram\n")
@@ -711,6 +714,15 @@ func mem_init() {
 	vectab.fiq_addr = catch
 	vectab.reset_addr_addr = catch
 	//print("svc branch addr is: ", hex(vectab.svc_addr), "\n")
+
+	//allocate the threadlock
+	threadlock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(4)))))
+
+	//allocate the maplock
+	maplock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(4)))))
+
+	//allocate the timelock
+	timelock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(4)))))
 
 	//allocate the spinlock for mmap
 	//maplock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(unsafe.Sizeof(Spinlock_t{}))))))
@@ -842,7 +854,7 @@ func mp_init() {
 	print("start stack: ", hex(start), " end stack: ", hex(end), "\n")
 	for i := uint32(0); i < 4; i++ {
 		isr_stack[i] = physaddr((end - 1024*i) & 0xFFFFFFF8)
-		//print("cpu[", i, "] isr stack at ", hex(isr_stack[i]), "\n")
+		print("cpu[", i, "] isr stack at ", hex(isr_stack[i]), "\n")
 	}
 	//print("cur cpu: ", cpunum(), "\n")
 
@@ -947,21 +959,13 @@ func trampoline() {
 	gic_cpu.interrupt_priority_mask_register = 0xFF //unmask everything
 	cpustatus[me] = CPU_RELEASED
 	//disable_interrupts()
-	threadlock.lock()
+	splock(threadlock)
+	//threadlock.lock()
 	thread_schedule()
 }
 
 //go:nosplit
 func Release(ncpu uint) {
-	//	stop = 0
-	//	DMB()
-	//	for cpustatus[1] < CPU_RELEASED {
-	//	}
-	//	for cpustatus[2] < CPU_RELEASED {
-	//	}
-	//	for cpustatus[3] < CPU_RELEASED {
-	//	}
-
 	//boot n cpus
 	start := uint(1)
 	for cpu := start; cpu < start+ncpu; cpu++ {
@@ -1025,8 +1029,6 @@ func cpuabort() {
 	print("zerobase addr is ", hex(zerobase_addr))
 	print("wait for JTAG connection\n")
 	WB_DEFAULT_UART.getchar()
-	//	for {
-	//	}
 }
 
 //go:nosplit
@@ -1038,8 +1040,7 @@ func cpuprefabort() {
 	print("prefetch abort on cpu ", me, " from addr ", hex(addr), "\n")
 	print("pte for this addr is : ", hex(*pte))
 	print("wait for JTAG connection\n")
-	for {
-	}
+	WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit
@@ -1048,8 +1049,8 @@ func cpuundefined() {
 	addr := RR0()
 	me := cpunum()
 	print("undefined on cpu ", me, " from addr ", hex(addr), "\n")
-	for {
-	}
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit
@@ -1193,6 +1194,29 @@ func map_region(pa uint32, va uint32, size uint32, perms uint32) {
 }
 
 //go:nosplit
+func Unmap_region(pa uint32, va uint32, size uint32) {
+	//section entry bits
+	pa = pa & 0xFFF00000
+	va = va & 0xFFF00000
+	realsize := roundup(size, PGSIZE)
+	////print("realsize is ", hex(realsize), "\n")
+	i := uint32(0)
+	for ; i <= realsize; i += PGSIZE {
+		//pgnum := pa2pgnum(physaddr(i + pa))
+		nextpa := pa + i
+		l1offset := nextpa >> 18
+		//entry := (*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(l1_table))) + uintptr(pgnum*4)))
+		////print("l1_table: ", hex(uintptr(l1_table)), " offset: ", hex(uint32(l1offset)), "\n")
+		////print("entry addr: ", hex(uintptr(l1_table+physaddr(l1offset))), "\n")
+		entry := (*uint32)(unsafe.Pointer(uintptr(l1_table + physaddr(l1offset))))
+		*entry = 0
+		//base_addr := (va + i)
+		//*entry = base_addr | perms
+	}
+	//print("mapped region va from ", hex(va), " to ", hex(va+i), "\n")
+}
+
+//go:nosplit
 func map_kernel() {
 	//read the kernel elf to find the regions of the kernel
 	elf := ((*Elf)(unsafe.Pointer(uintptr(kernelstart))))
@@ -1276,29 +1300,45 @@ func showl1table() {
 func l1_walk() {
 }
 
-type Spinlock_t struct {
-	v      uint32
-	holder int
-}
+type Spinlock_t uint32
 
 //go:nosplit
-func (l *Spinlock_t) lock() {
-	//disable_interrupts()
+func splock(l *Spinlock_t) {
 	for {
-		if atomic.Cas(&l.v, 0, 1) {
-			l.holder = cpunum()
-			//	enable_interrupts()
+		if atomic.ReCas((*uint32)(unsafe.Pointer(l)), 0, 1) {
 			return
 		}
 	}
 }
 
 //go:nosplit
-func (l *Spinlock_t) unlock() {
-	l.holder = -1
-	l.v = 0
-	DMB()
+func spunlock(l *Spinlock_t) {
+	*l = 0
 }
+
+//type Spinlock_t struct {
+//	v uint32
+//	//holder int
+//}
+//
+////go:nosplit
+//func (l *Spinlock_t) lock() {
+//	//disable_interrupts()
+//	for {
+//		if atomic.Cas(&l.v, 0, 1) {
+//			//l.holder = cpunum()
+//			//	enable_interrupts()
+//			return
+//		}
+//	}
+//}
+
+////go:nosplit
+//func (l *Spinlock_t) unlock() {
+//	//l.holder = -1
+//	l.v = 0
+//	//DMB()
+//}
 
 type Ticketlock_t struct {
 	v      uint32
@@ -1323,15 +1363,16 @@ func (l *Ticketlock_t) unlock() {
 
 const MMAP_FIXED = uint32(0x10)
 
-var maplock Spinlock_t
+var maplock *Spinlock_t
 
 // mmap calls the mmap system call.  It is implemented in assembly.
 //go:nosplit
 func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32) unsafe.Pointer {
-	maplock.lock()
+	//maplock.lock()
+	splock(maplock)
 	va := uintptr(addr)
 	size := uint32(roundup(uint32(n), PGSIZE))
-	//print("mmap_arm: ", hex(va), " ", hex(n), " ", hex(prot), " ", hex(flags), "\n")
+	print("mmap_arm: ", hex(va), " ", hex(n), " ", hex(prot), " ", hex(flags), "\n")
 
 	if va == 0 {
 		//throw("cowardly refusing to map 0\n")
@@ -1353,13 +1394,13 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	//clear := true
 	for start := va; start < (va + uintptr(size)); start += uintptr(PGSIZE) {
 		pte := walk_pgdir(kernpgdir, uint32(start))
-		if *pte&0x2 > 0 {
-			//print("mmap_fixed failure for va: ", hex(start), " because it's already mapped\n")
-			//print("pte addr ", hex(uintptr(unsafe.Pointer(pte))), " contents ", hex(*pte), "\n")
-			//panic(".")
-			//clear = false
-			continue
-		}
+		//		if *pte&0x2 > 0 {
+		//			//print("mmap_fixed failure for va: ", hex(start), " because it's already mapped\n")
+		//			//print("pte addr ", hex(uintptr(unsafe.Pointer(pte))), " contents ", hex(*pte), "\n")
+		//			//panic(".")
+		//			//clear = false
+		//			continue
+		//		}
 		page := page_alloc()
 		if page == nil {
 			throw("mmap_arm: out of memory\n")
@@ -1380,18 +1421,20 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	invallpages()
 	DMB()
 	//showl1table()
-	maplock.unlock()
+	spunlock(maplock)
+	//maplock.unlock()
 	//print("updated page tables -> ", hex(va), "\n")
 	return unsafe.Pointer(va)
 }
 
-var timelock Spinlock_t
+var timelock *Spinlock_t
 
 //var curtime = 0
 
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
-	timelock.lock()
+	//timelock.lock()
+	splock(timelock)
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
 	ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
@@ -1402,7 +1445,8 @@ func clk_gettime(clock_type uint32, ts *timespec) {
 	}
 	ts.tv_sec = int32(sec)
 	ts.tv_nsec = int32(nsec)
-	timelock.unlock()
+	spunlock(timelock)
+	//timelock.unlock()
 }
 
 //go:nosplit

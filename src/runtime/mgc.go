@@ -167,6 +167,8 @@ const (
 // debugging.
 var heapminimum uint64 = defaultHeapMinimum
 
+//var heapminimum uint64 = 0
+
 // defaultHeapMinimum is the value of heapminimum for GOGC==100.
 const defaultHeapMinimum = 4 << 20
 
