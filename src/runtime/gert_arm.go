@@ -97,7 +97,6 @@ func trap_debug() {
 		return
 	case 142:
 		//print("spoofing select on cpu ", cpunum(), "\n")
-		//throw("select")
 		if !panicpanic {
 			//disable_interrupts()
 			//threadlock.lock()
@@ -315,27 +314,17 @@ var lastrun = 0
 
 var threadlock *Spinlock_t
 
-//var threadlock Ticketlock_t
-
 var thread_time timespec
 
 //go:nosplit
 func thread_schedule() {
-	//write_uart([]byte("!"))
-	//unlock the thread
 	for {
 		mycpu := cpunum()
-		//curthread[mycpu].lock.unlock()
-
-		//threadlock.lock()
-		if cpustatus[mycpu] == CPU_FULL {
-			if btrace == true {
-				print(mycpu)
-			}
-		}
 		//check if any futex timed out
 		clk_gettime(0, &thread_time)
 		for next := (lastrun + 1) % maxthreads; next != lastrun; next = (next + 1) % maxthreads {
+
+			//wake sleepers
 			if threads[next].state == ST_SLEEPING {
 				if (thread_time.tv_sec >= threads[next].sleeptil.tv_sec) || (thread_time.tv_sec == threads[next].sleeptil.tv_sec && thread_time.tv_nsec >= threads[next].sleeptil.tv_nsec) {
 					threads[next].state = ST_RUNNABLE
@@ -345,70 +334,45 @@ func thread_schedule() {
 					threads[next].sleeptil.tv_nsec = 0
 				}
 			}
+
+			//we found something runnable
 			if threads[next].state == ST_RUNNABLE {
-				//grab the thread lock
-				//threads[lastrun].lock.lock()
 				threads[next].state = ST_RUNNING
 				curthread[mycpu] = &threads[next]
-				if cpustatus[mycpu] == CPU_FULL {
-					//			print("\t\t\t\tschedule thread ", next, " on cpu ", mycpu, "\n")
-					//			print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
-					//print(mycpu, "Y ")
-				}
 				cpustatus[mycpu] = CPU_FULL
 				lastrun = next
 				invallpages()
 				spunlock(threadlock)
-				//threadlock.unlock()
 				if uintptr(unsafe.Pointer(curthread[mycpu])) == 0 || curthread[mycpu] == nil {
 					panic("trapframe is null")
 				}
 				ReplayTrapframe(curthread[mycpu])
 				throw("should never be here\n")
 			}
-			//print("\t\t thread ", next, " state is ", threads[next].state, "\n")
 		}
-		//check lastrun
+
+		//check lastrun if we can just go back to that
 		if threads[lastrun].state == ST_RUNNABLE {
 			threads[lastrun].state = ST_RUNNING
 			curthread[mycpu] = &threads[lastrun]
-			if cpustatus[mycpu] == CPU_FULL {
-				//print("\t\t\t\tre-schedule thread ", lastrun, " on cpu ", mycpu, "\n")
-				//		print("\t\t\t\tLR ", hex(curthread[mycpu].tf.lr), " sp ", hex(curthread[mycpu].tf.sp), "\n")
-				//print(mycpu, "Y ")
-			}
 			cpustatus[mycpu] = CPU_FULL
 			lastrun = lastrun
 			invallpages()
 			spunlock(threadlock)
-			//threadlock.unlock()
-			if uintptr(unsafe.Pointer(curthread[mycpu])) == 0 || curthread[mycpu] == nil {
-				panic("trapframe is null")
-			}
 			ReplayTrapframe(curthread[mycpu])
 			throw("should never be here\n")
 		}
-		//drop to idle
+
+		//drop to idle, there's nothing to do
 		spunlock(threadlock)
-		//threadlock.unlock()
-		if cpustatus[mycpu] == CPU_FULL {
-			//print(mycpu, "N ")
-		}
 		idle()
 		splock(threadlock)
-		//threadlock.lock()
 	}
 	throw("no runnable threads. what happened?\n")
 }
 
 //go:nosplit
 func idle() {
-	//print("cpu ", cpunum(), " waits for work\n")
-	//	for i := 0; i < maxthreads; i++ {
-	//		//print("\t\tthread ", i, " is in state ", threads[i].state, "\n")
-	//	}
-	//	for i := 0; i < 1000000000; i++ {
-	//	}
 }
 
 //go:nosplit
