@@ -122,15 +122,16 @@ func main() {
 	// Record when the world started.
 	runtimeInitTime = nanotime()
 
-	yieldmon := func() {
-		for {
-			osyield()
-		}
-	}
+	//	yieldmon := func() {
+	//		for {
+	//			osyield()
+	//		}
+	//	}
 
 	if Armhackmode > 0 {
 		systemstack(func() {
-			newm(yieldmon, nil)
+			//newm(yieldmon, nil)
+			newm(sysmon, nil)
 		})
 	} else {
 		systemstack(func() {
