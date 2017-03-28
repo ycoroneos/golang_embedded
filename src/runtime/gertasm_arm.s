@@ -158,13 +158,21 @@ TEXT runtime·Threadschedule(SB), NOSPLIT, $0
 	MOVW LR, 0(R4)
 
 	//	MOVW R13, 4(R4)
-	MOVW R5, 4(R4)                   // save the modified stack pointer
+	MOVW R5, 4(R4)  // save the modified stack pointer
 	MOVW R11, 8(R4)
 	MOVW R0, 12(R4)
 	MOVW R1, 16(R4)
 	MOVW R2, 20(R4)
 	MOVW R3, 24(R4)
 	MOVW g, 28(R4)
+
+	// now we should switch stacks
+	MOVW runtime·threadstacks(SB), R4
+	MOVW R11, R4                      // the golang assember likes to dereference pointers without telling me
+	ADD  R6, R4                       // offset into threadstacks list
+	MOVW (R4), R4                     // dereference
+	MOVW R4, R13                      // switch to the scheduler stack
+
 	CALL runtime·thread_schedule(SB)
 
 	// this should never happen

@@ -316,6 +316,8 @@ var threadlock *Spinlock_t
 
 var thread_time timespec
 
+var threadstacks [4]uint32
+
 //go:nosplit
 func thread_schedule() {
 	for {
@@ -688,6 +690,13 @@ func mem_init() {
 	//allocate the timelock
 	timelock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(4)))))
 
+	//allocate scheduler stacks
+	boot_alloc(4 * 1028)
+	end := uint32(boot_alloc(0))
+	for i := uint32(0); i < 4; i++ {
+		threadstacks[i] = (end - 1024*i) & uint32(0xFFFFFFF8)
+	}
+
 	//allocate the spinlock for mmap
 	//maplock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(unsafe.Sizeof(Spinlock_t{}))))))
 	////print("\tmap spinlock at: ", hex(uintptr(unsafe.Pointer(maplock))), " \n")
@@ -964,7 +973,7 @@ func cpucatch() {
 		//	trapfn()
 		//	dropm()
 		//we missed it
-		write_uart([]byte("missed"))
+		//write_uart([]byte("missed"))
 	} else {
 		//	print("LR : ", hex(lr), " cpu ", cpunum(), "\n")
 		//setg(g.m.gsignal)
