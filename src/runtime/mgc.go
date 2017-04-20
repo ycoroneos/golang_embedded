@@ -920,6 +920,9 @@ func gcShouldStart(forceTrigger bool) bool {
 // This may return without performing this transition in some cases,
 // such as when called on a system stack or with locks held.
 func gcStart(mode gcMode, forceTrigger bool) {
+	if Armhackmode > 0 {
+		print("START GC\n\n")
+	}
 	// Since this is called from malloc and malloc is called in
 	// the guts of a number of libraries that might be holding
 	// locks, don't attempt to start GC in non-preemptible or
@@ -978,8 +981,15 @@ func gcStart(mode gcMode, forceTrigger bool) {
 		}
 	}
 
+	if Armhackmode > 0 {
+		print("GC ACQUIRE WORLD SEMA ... ")
+	}
+
 	// Ok, we're doing it!  Stop everybody else
 	semacquire(&worldsema)
+	if Armhackmode > 0 {
+		print("DONE\n")
+	}
 
 	if trace.enabled {
 		traceGCStart()
@@ -989,6 +999,9 @@ func gcStart(mode gcMode, forceTrigger bool) {
 		gcBgMarkStartWorkers()
 	}
 
+	if Armhackmode > 0 {
+		print("RESET MARK STATE\n")
+	}
 	gcResetMarkState()
 
 	now := nanotime()
@@ -999,13 +1012,22 @@ func gcStart(mode gcMode, forceTrigger bool) {
 	work.mode = mode
 
 	work.pauseStart = now
+	if Armhackmode > 0 {
+		print("STOP THE WORLD\n")
+	}
 	systemstack(stopTheWorldWithSema)
 	// Finish sweep before we start concurrent scan.
+	if Armhackmode > 0 {
+		print("FINISH SWEEP\n")
+	}
 	systemstack(func() {
 		finishsweep_m()
 	})
 	// clearpools before we start the GC. If we wait they memory will not be
 	// reclaimed until the next GC cycle.
+	if Armhackmode > 0 {
+		print("CLEAR POOLS\n")
+	}
 	clearpools()
 
 	if mode == gcBackgroundMode { // Do as much work concurrently as possible
@@ -1055,6 +1077,9 @@ func gcStart(mode gcMode, forceTrigger bool) {
 		work.pauseNS += now - work.pauseStart
 		work.tMark = now
 	} else {
+		if Armhackmode > 0 {
+			print("GC FORCED MODE\n")
+		}
 		t := nanotime()
 		work.tMark, work.tMarkTerm = t, t
 		work.heapGoal = work.heap0
@@ -1064,9 +1089,15 @@ func gcStart(mode gcMode, forceTrigger bool) {
 		}
 
 		// Perform mark termination. This will restart the world.
+		if Armhackmode > 0 {
+			print("GC MARK TERMINATION\n")
+		}
 		gcMarkTermination()
 	}
 
+	if Armhackmode > 0 {
+		print("GC SEMA RELEASE\n")
+	}
 	if useStartSema {
 		semrelease(&work.startSema)
 	}
@@ -1209,6 +1240,9 @@ func gcMarkTermination() {
 	casgstatus(gp, _Grunning, _Gwaiting)
 	gp.waitreason = "garbage collection"
 
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: gcMark(startTime)\n")
+	}
 	// Run gc on the g0 stack. We do this so that the g stack
 	// we're currently running on will no longer change. Cuts
 	// the root set down a bit (g0 stacks are not scanned, and
@@ -1224,6 +1258,9 @@ func gcMarkTermination() {
 		// non-system stack to pick up the new addresses
 		// before continuing.
 	})
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: gcResetMarkState()\n")
+	}
 
 	systemstack(func() {
 		work.heap2 = work.bytesMarked
@@ -1273,36 +1310,44 @@ func gcMarkTermination() {
 		throw("gc done but gcphase != _GCoff")
 	}
 
-	// Update timing memstats
-	now := nanotime()
-	sec, nsec, _ := time_now()
-	unixNow := sec*1e9 + int64(nsec)
-	work.pauseNS += now - work.pauseStart
-	work.tEnd = now
-	atomic.Store64(&memstats.last_gc_unix, uint64(unixNow)) // must be Unix time to make sense to user
-	atomic.Store64(&memstats.last_gc_nanotime, uint64(now)) // monotonic time for us
-	memstats.pause_ns[memstats.numgc%uint32(len(memstats.pause_ns))] = uint64(work.pauseNS)
-	memstats.pause_end[memstats.numgc%uint32(len(memstats.pause_end))] = uint64(unixNow)
-	memstats.pause_total_ns += uint64(work.pauseNS)
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: update timing memstats\n")
+	}
+	if Armhackmode > 0 {
+	} else {
+		// Update timing memstats
+		now := nanotime()
+		sec, nsec, _ := time_now()
+		unixNow := sec*1e9 + int64(nsec)
+		work.pauseNS += now - work.pauseStart
+		work.tEnd = now
+		atomic.Store64(&memstats.last_gc_unix, uint64(unixNow)) // must be Unix time to make sense to user
+		atomic.Store64(&memstats.last_gc_nanotime, uint64(now)) // monotonic time for us
+		memstats.pause_ns[memstats.numgc%uint32(len(memstats.pause_ns))] = uint64(work.pauseNS)
+		memstats.pause_end[memstats.numgc%uint32(len(memstats.pause_end))] = uint64(unixNow)
+		memstats.pause_total_ns += uint64(work.pauseNS)
 
-	// Update work.totaltime.
-	sweepTermCpu := int64(work.stwprocs) * (work.tMark - work.tSweepTerm)
-	// We report idle marking time below, but omit it from the
-	// overall utilization here since it's "free".
-	markCpu := gcController.assistTime + gcController.dedicatedMarkTime + gcController.fractionalMarkTime
-	markTermCpu := int64(work.stwprocs) * (work.tEnd - work.tMarkTerm)
-	cycleCpu := sweepTermCpu + markCpu + markTermCpu
-	work.totaltime += cycleCpu
+		// Update work.totaltime.
+		sweepTermCpu := int64(work.stwprocs) * (work.tMark - work.tSweepTerm)
+		// We report idle marking time below, but omit it from the
+		// overall utilization here since it's "free".
+		markCpu := gcController.assistTime + gcController.dedicatedMarkTime + gcController.fractionalMarkTime
+		markTermCpu := int64(work.stwprocs) * (work.tEnd - work.tMarkTerm)
+		cycleCpu := sweepTermCpu + markCpu + markTermCpu
+		work.totaltime += cycleCpu
 
-	// Compute overall GC CPU utilization.
-	totalCpu := sched.totaltime + (now-sched.procresizetime)*int64(gomaxprocs)
-	memstats.gc_cpu_fraction = float64(work.totaltime) / float64(totalCpu)
+		// Compute overall GC CPU utilization.
+		totalCpu := sched.totaltime + (now-sched.procresizetime)*int64(gomaxprocs)
+		memstats.gc_cpu_fraction = float64(work.totaltime) / float64(totalCpu)
 
-	memstats.numgc++
-
+		memstats.numgc++
+	}
 	// Reset sweep state.
 	sweep.nbgsweep = 0
 	sweep.npausesweep = 0
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: start the world\n")
+	}
 
 	systemstack(startTheWorldWithSema)
 
@@ -1318,48 +1363,51 @@ func gcMarkTermination() {
 		mProf_GC()
 	}
 
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: free stack spans\n")
+	}
 	// Free stack spans. This must be done between GC cycles.
 	systemstack(freeStackSpans)
 
 	// Print gctrace before dropping worldsema. As soon as we drop
 	// worldsema another cycle could start and smash the stats
 	// we're trying to print.
-	if debug.gctrace > 0 {
-		util := int(memstats.gc_cpu_fraction * 100)
-
-		var sbuf [24]byte
-		printlock()
-		print("gc ", memstats.numgc,
-			" @", string(itoaDiv(sbuf[:], uint64(work.tSweepTerm-runtimeInitTime)/1e6, 3)), "s ",
-			util, "%: ")
-		prev := work.tSweepTerm
-		for i, ns := range []int64{work.tMark, work.tMarkTerm, work.tEnd} {
-			if i != 0 {
-				print("+")
-			}
-			print(string(fmtNSAsMS(sbuf[:], uint64(ns-prev))))
-			prev = ns
-		}
-		print(" ms clock, ")
-		for i, ns := range []int64{sweepTermCpu, gcController.assistTime, gcController.dedicatedMarkTime + gcController.fractionalMarkTime, gcController.idleMarkTime, markTermCpu} {
-			if i == 2 || i == 3 {
-				// Separate mark time components with /.
-				print("/")
-			} else if i != 0 {
-				print("+")
-			}
-			print(string(fmtNSAsMS(sbuf[:], uint64(ns))))
-		}
-		print(" ms cpu, ",
-			work.heap0>>20, "->", work.heap1>>20, "->", work.heap2>>20, " MB, ",
-			work.heapGoal>>20, " MB goal, ",
-			work.maxprocs, " P")
-		if work.mode != gcBackgroundMode {
-			print(" (forced)")
-		}
-		print("\n")
-		printunlock()
-	}
+	//	if debug.gctrace > 0 {
+	//		util := int(memstats.gc_cpu_fraction * 100)
+	//
+	//		var sbuf [24]byte
+	//		printlock()
+	//		print("gc ", memstats.numgc,
+	//			" @", string(itoaDiv(sbuf[:], uint64(work.tSweepTerm-runtimeInitTime)/1e6, 3)), "s ",
+	//			util, "%: ")
+	//		prev := work.tSweepTerm
+	//		for i, ns := range []int64{work.tMark, work.tMarkTerm, work.tEnd} {
+	//			if i != 0 {
+	//				print("+")
+	//			}
+	//			print(string(fmtNSAsMS(sbuf[:], uint64(ns-prev))))
+	//			prev = ns
+	//		}
+	//		print(" ms clock, ")
+	//		for i, ns := range []int64{sweepTermCpu, gcController.assistTime, gcController.dedicatedMarkTime + gcController.fractionalMarkTime, gcController.idleMarkTime, markTermCpu} {
+	//			if i == 2 || i == 3 {
+	//				// Separate mark time components with /.
+	//				print("/")
+	//			} else if i != 0 {
+	//				print("+")
+	//			}
+	//			print(string(fmtNSAsMS(sbuf[:], uint64(ns))))
+	//		}
+	//		print(" ms cpu, ",
+	//			work.heap0>>20, "->", work.heap1>>20, "->", work.heap2>>20, " MB, ",
+	//			work.heapGoal>>20, " MB goal, ",
+	//			work.maxprocs, " P")
+	//		if work.mode != gcBackgroundMode {
+	//			print(" (forced)")
+	//		}
+	//		print("\n")
+	//		printunlock()
+	//	}
 
 	semrelease(&worldsema)
 	// Careful: another GC cycle may start now.
@@ -1367,6 +1415,9 @@ func gcMarkTermination() {
 	releasem(mp)
 	mp = nil
 
+	if Armhackmode > 0 {
+		print("GC MARK TERMINATION: gosched\n")
+	}
 	// now that gc is done, kick off finalizer thread if needed
 	if !concurrentSweep {
 		// give the queued finalizers, if any, a chance to run
