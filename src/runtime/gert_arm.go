@@ -955,6 +955,7 @@ func Release(ncpu uint) {
 var IRQmsg chan int = make(chan int, 20)
 
 var trapfn func(irqnum uint32)
+var Booted uint8
 
 ///The world might be stopped, we dont really know
 //go:nosplit
@@ -963,7 +964,7 @@ func cpucatch() {
 	//lr := RR0()
 	irqnum := gic_cpu.interrupt_acknowledge_register
 	g := getg()
-	if g == nil {
+	if g == nil && Booted == 0 {
 		//	if cpustatus[cpunum()] != CPU_FULL {
 		//		write_uart([]byte("not init "))
 		//	}
