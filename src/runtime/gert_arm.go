@@ -957,12 +957,18 @@ var IRQmsg chan int = make(chan int, 20)
 var trapfn func(irqnum uint32)
 var Booted uint8
 
+//make sure only 1 cpu gets the intended interrupt
+//var irqlock Spinlock_t
+
 ///The world might be stopped, we dont really know
 //go:nosplit
 //go:nowritebarrierrec
 func cpucatch() {
 	//lr := RR0()
+	//splock(&irqlock)
 	irqnum := gic_cpu.interrupt_acknowledge_register
+	gic_cpu.end_of_interrupt_register = irqnum
+	//spunlock(&irqlock)
 	g := getg()
 	if g == nil && Booted == 0 {
 		//	if cpustatus[cpunum()] != CPU_FULL {
@@ -982,7 +988,7 @@ func cpucatch() {
 		//	print("INT", cpunum(), " ")
 		//	IRQmsg <- 1
 	}
-	gic_cpu.end_of_interrupt_register = irqnum
+	//gic_cpu.end_of_interrupt_register = irqnum
 }
 
 //go:nosplit
