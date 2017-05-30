@@ -19,7 +19,7 @@ var hwcap uint32      // set by setup_auxv
 
 func checkgoarm() {
 	if Armhackmode > 0 {
-		print("detected Biscuit hackmode, FPU exists on armv7a\n")
+		print("detected GERT hackmode, FPU exists on armv7a\n")
 		goarm = 7
 		return
 	}

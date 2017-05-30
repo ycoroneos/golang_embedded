@@ -1152,6 +1152,10 @@ func cpucatch() {
 	}
 }
 
+func SetIRQcallback(f func(uint32)) {
+	trapfn = f
+}
+
 //
 // FAULTS
 //

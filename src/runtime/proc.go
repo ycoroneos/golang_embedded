@@ -3730,10 +3730,6 @@ var forcegcperiod int64 = 2 * 60 * 1e9
 //go:nowritebarrierrec
 func sysmon() {
 
-	if Armhackmode > 0 {
-		print("SYSMON\n")
-	}
-
 	// If a heap span goes unused for 5 minutes after a garbage collection,
 	// we hand it back to the operating system.
 	scavengelimit := int64(5 * 60 * 1e9)
@@ -3828,9 +3824,6 @@ func sysmon() {
 			lasttrace = now
 			schedtrace(debug.scheddetail > 0)
 		}
-	}
-	if Armhackmode > 0 {
-		print("SYSMON done\n")
 	}
 }
 
