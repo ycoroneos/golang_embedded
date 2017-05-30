@@ -59,82 +59,56 @@ func trap_debug() {
 	arg5 := RR5()
 	arg6 := RR6()
 	trapno := RR7()
-	////print("incoming trap: ", trapno, "\n")
+	//print("incoming trap: ", trapno, "\n")
 	switch trapno {
 	case 1:
 		print("exit")
 		PutR0(0)
 	case 3:
-		////print("spoofing read on: ", arg0, "\n")
 		ret := uint32(0xffffffff)
 		PutR0(ret)
 		return
 	case 4:
-		////print("spoofing write on: ", arg0, "\n")
 		ret := uint32(0xffffffff)
 		if arg0 == 1 || arg0 == 2 {
-			//writelock.lock()
 			splock(&writelock)
 			ret = write_uart_unsafe(uintptr(arg1), arg2)
 			spunlock(&writelock)
-			//writelock.unlock()
 		} else {
 		}
 		PutR0(ret)
 		return
 	case 5:
-		//print("spoofing open on: ", arg0, "\n")
 		PutR0(0xffffffff)
 		return
 	case 6:
-		//print("spoofin close on: ", arg0, "\n")
 		PutR0(0)
 		return
 	case 120:
-		//print("spoofing clone\n")
 		thread_id := makethread(uint32(arg0), uintptr(arg1), uintptr(arg2))
 		PutR0(uint32(thread_id))
 		return
 	case 142:
-		//print("spoofing select on cpu ", cpunum(), "\n")
 		if !panicpanic {
-			//disable_interrupts()
-			//threadlock.lock()
 			splock(threadlock)
 			curthread[cpunum()].state = ST_RUNNABLE
-			//print("thread ", curthread[cpunum()].id, " is now runnable\n")
-			//Threadschedule()
 			return_here()
-			//print("select returns on cpu ", cpunum(), "\n")
 		}
 		PutR0(0)
 		return
 	case 158:
-		//print("spoofing sys sched yield on cpu ", cpunum(), "\n")
-		//disable_interrupts()
-		//threadlock.lock()
 		splock(threadlock)
 		curthread[cpunum()].state = ST_RUNNABLE
 		return_here()
-		//print("sys yield returns on cpu ", cpunum(), "\n")
-		//Threadschedule()
 		PutR0(0)
 		return
 	case 174:
-		//print("spoofing rtsigaction\n")
-		//signum := uint32(arg0)
-		//new := ((*sigactiont)(unsafe.Pointer(uintptr(arg1))))
-		//old := ((*sigactiont)(unsafe.Pointer(uintptr(arg2))))
-		//res := hack_sigaction(signum, new, old)
-		//PutR0(res)
 		PutR0(0)
 		return
 	case 175:
-		//print("spoofing rtsigproc\n")
 		PutR0(0)
 		return
 	case 186:
-		//print("spoofing sigaltstack\n")
 		PutR0(0)
 		return
 	case 192:
@@ -146,24 +120,18 @@ func trap_debug() {
 		fd := int32(arg4)
 		off := uint32(arg5)
 		ret := uint32(uintptr(hack_mmap(addr, n, prot, flags, fd, off)))
-		//print("mmap returns ", hex(ret), "\n")
 		PutR0(ret)
 		return
 	case 220:
-		//print("spoofing madvise\n")
 		PutR0(0)
 		return
 	case 224:
-		//print("spoof gettid on cpu ", cpunum(), "\n")
-		//throw("gettid")
 		PutR0(thread_current())
 		return
 	case 238:
-		//print("spoofing tkill\n")
 		PutR0(0)
 		return
 	case 240:
-		//print("spoofing futex\n")
 		uaddr := ((*int32)(unsafe.Pointer(uintptr(arg0))))
 		ts := ((*timespec)(unsafe.Pointer(uintptr(arg3))))
 		uaddr2 := ((*int32)(unsafe.Pointer(uintptr(arg4))))
@@ -173,7 +141,6 @@ func trap_debug() {
 	case 248:
 		if firstexit == true {
 			firstexit = false
-			//throw("exit")
 			PutR0(0)
 		}
 		for {
@@ -198,8 +165,9 @@ func trap_debug() {
 	throw("trap")
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////threading
+//
+// THREADING
+//
 
 //go:nosplit
 func Threadschedule()
@@ -263,10 +231,8 @@ const (
 func thread_init() {
 	for i := uint32(0); i < maxthreads; i++ {
 		va := uintptr(unsafe.Pointer(&threads[i].id))
-		//print("write to ", hex(va), " ")
 		pgnum := va >> PGSHIFT
 		pde := (*uint32)(unsafe.Pointer(kernpgdir + uintptr(pgnum*4)))
-		//print("pde is ", hex(*pde), "\n")
 		if (*pde & 0x2) == 0 {
 			print("UNMAPPED thread structure in thread_init")
 		}
@@ -276,7 +242,6 @@ func thread_init() {
 	mycpu := cpunum()
 	curthread[mycpu] = &threads[0]
 	RecordTrapframe()
-	//print("made thread 0 on cpu ", mycpu, "\n")
 }
 
 //go:nosplit
@@ -289,7 +254,6 @@ func makethread(flags uint32, stack uintptr, entry uintptr) int {
 	chk := uint32(CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
 		CLONE_THREAD)
 	if flags != chk {
-		//print("unexpected clone args ", hex(uintptr(flags)), " expected ", hex(chk))
 		throw("clone error")
 	}
 	i := 0
@@ -305,8 +269,7 @@ func makethread(flags uint32, stack uintptr, entry uintptr) int {
 	threads[i].tf.lr = entry
 	threads[i].tf.sp = stack
 	threads[i].tf.r0 = 0 //returns 0 in the child
-	print("\t\t\t\t new thread ", i, "\n")
-	//print("\t\t\t\t LR ", hex(threads[i].tf.lr), " sp: ", hex(threads[i].tf.sp), "\n")
+	//print("\t\t\t\t new thread ", i, "\n")
 	return int(i)
 }
 
@@ -389,8 +352,6 @@ func bkpt() {
 	return
 }
 
-var Crash = false
-
 //go:nosplit
 func return_here() {
 	Threadschedule()
@@ -410,8 +371,6 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 		dosleep := *uaddr == val
 		if dosleep {
 			//enter thread scheduler
-			//disable_interrupts()
-			//threadlock.lock()
 			splock(threadlock)
 			curthread[mycpu].state = ST_SLEEPING
 			curthread[mycpu].futaddr = uaddrn
@@ -421,17 +380,8 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 				clk_gettime(0, &temptime)
 				curthread[mycpu].sleeptil.tv_sec = temptime.tv_sec + to.tv_sec
 				curthread[mycpu].sleeptil.tv_nsec = temptime.tv_nsec + to.tv_nsec
-				//print("now: ", temptime.tv_sec, " ", temptime.tv_nsec, " wait till ", curthread[mycpu].sleeptil.tv_sec, "\n")
 			}
-			//print("thread ", curthread[mycpu].id, " sleeps on cpu ", mycpu, "\n")
-			//Threadschedule()
 			return_here()
-			//print("thread ", curthread[cpunum()].id, " wakes on cpu ", cpunum(), "\n")
-			//print("Crash ", Crash, "\n")
-			//if curthread[cpunum()].id == 1 && cpunum() == 1 && Crash == true {
-			//	bkpt()
-			//}
-			//returns with retval in r0
 			ret = int(RR0())
 		} else {
 			//lost wakeup?
@@ -445,26 +395,23 @@ func hack_futex_arm(uaddr *int32, op, val int32, to *timespec, uaddr2 *int32, va
 			st := t.state
 			if t.futaddr == uaddrn && st == ST_SLEEPING {
 				t.state = ST_RUNNABLE
-				//t.sleepfor = 0
 				t.futaddr = 0
 				t.tf.r0 = 0
-				//t.sleepret = 0
 				val--
 				woke++
-				//print("woke futex with lr: ", hex(t.tf.lr), "\n")
 			}
 		}
-		////print("futex woke ", woke, " threads\n")
 		ret = woke
 	default:
-		//print("futex op ", hex(uintptr(op)))
 		throw("unexpected futex op")
 	}
 	return int32(ret)
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////vmem system
+//
+// VIRTUAL MEMORY
+//
+
 type physaddr uint32
 
 //go:nosplit
@@ -598,17 +545,14 @@ var kernpgdir uintptr
 //go:nosplit
 func roundup(val, upto uint32) uint32 {
 	result := (val + (upto - 1)) & ^(upto - 1)
-	//	//print("rounded ", hex(val), " to ", hex(result), "\n")
 	return result
 }
 
 //go:nosplit
 func verifyzero(addr uintptr, n uint32) {
-	//print("inside verifyzero\n")
 	for i := 0; i < int(n); i++ {
 		test := *((*byte)(unsafe.Pointer(addr + uintptr(n))))
 		if test > 0 {
-			//print("verify zero failure\n")
 		}
 	}
 }
@@ -618,15 +562,11 @@ func memclrbytes(ptr unsafe.Pointer, n uintptr)
 
 //go:nosplit
 func boot_alloc(size uint32) physaddr {
-	//allocate ROUNDUP(size, PGSIZE) bytes from the boot region
 	result := boot_end
 	newsize := uint32(roundup(uint32(size), 0x4))
 	boot_end = boot_end + physaddr(newsize)
-	////print("boot alloc clearing ", hex(uint32(result)), " up to ", hex(uint32(boot_end)), "\n")
 	memclrNoHeapPointers(unsafe.Pointer(uintptr(result)), uintptr(newsize))
-	//memclrbytes(unsafe.Pointer(uintptr(result)), uintptr(newsize))
 	DMB()
-	//verifyzero(uintptr(result), newsize)
 	return result
 }
 
@@ -644,27 +584,19 @@ func clock_init() {
 
 //go:nosplit
 func mem_init() {
-	//print("mem init: ", hex(RAM_SIZE), " bytes of ram\n")
-	//print("mem init: kernel elf start: ", hex(kernelstart), " kernel elf end: ", hex(kernelstart+kernelsize), "\n")
-	//print("stack at: ", hex(uint32(bootstack)), "\n")
-	//calculate how many pages we can have
 	npages = RAM_SIZE / PGSIZE
-	//print("\t npages: ", npages, "\n")
 
 	//allocate the l1 table
 	//4 bytes each and 4096 entries
 	boot_end = physaddr(roundup(uint32(bootstack), L1_ALIGNMENT))
 	l1_table = boot_alloc(4 * 4096)
-	//print("\tl1 page table at: ", hex(l1_table), "\n")
 
 	//allocate the vector table
 	boot_end = physaddr(roundup(uint32(boot_end), VBAR_ALIGNMENT))
 	vectab = ((*vector_table)(unsafe.Pointer(uintptr(boot_alloc(uint32(unsafe.Sizeof(vector_table{})))))))
 	vbar := Readvbar()
-	//print("vbar at ", hex(vbar), "\n")
 	boot_table := ((*vector_table)(unsafe.Pointer(uintptr(vbar))))
 	*vectab = *boot_table
-	//print("\tvector table at: ", hex(uintptr(unsafe.Pointer(vectab))), " \n")
 	catch := getcatch()
 	abort := getabort_int()
 	pref_abort := getpref_abort()
@@ -679,7 +611,6 @@ func mem_init() {
 	vectab.irq_addr = catch
 	vectab.fiq_addr = catch
 	vectab.reset_addr_addr = catch
-	//print("svc branch addr is: ", hex(vectab.svc_addr), "\n")
 
 	//allocate the threadlock
 	threadlock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(4)))))
@@ -697,345 +628,9 @@ func mem_init() {
 		threadstacks[i] = (end - 1024*i) & uint32(0xFFFFFFF8)
 	}
 
-	//allocate the spinlock for mmap
-	//maplock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(unsafe.Sizeof(Spinlock_t{}))))))
-	////print("\tmap spinlock at: ", hex(uintptr(unsafe.Pointer(maplock))), " \n")
-
-	//allocate the spinlock for boot
-	//bootlock = (*Spinlock_t)(unsafe.Pointer(uintptr(boot_alloc(uint32(unsafe.Sizeof(Spinlock_t{}))))))
-	////print("\tboot spinlock at: ", hex(uintptr(unsafe.Pointer(bootlock))), " \n")
-
-	//allocate pages array outside the runtime's knowledge
-	//boot_end = boot_end + physaddr(8*4)
-	//boot_end = physaddr(roundup(uint32(boot_end), PGSIZE))
 	pages = uintptr(boot_alloc(npages * 8))
-	////print("pages at: ", hex(uintptr(unsafe.Pointer(pages))), " sizeof(struct PageInfo) is ", hex(unsafe.Sizeof(*pages)), "\n")
-	//print("pages at: ", hex(pages), "\n")
 	physPageSize = uintptr(PGSIZE)
 
-}
-
-//go:nosplit
-func cpunum() int
-
-//go:nosplit
-func Cpunum() int {
-	return cpunum()
-}
-
-//go:nosplit
-func boot_any()
-
-//go:nosplit
-func getentry() uint32
-
-//go:nosplit
-func catch()
-
-//go:nosplit
-func getcatch() uint32
-
-//go:nosplit
-func abort_int()
-
-//go:nosplit
-func getabort_int() uint32
-
-//go:nosplit
-func pref_abort()
-
-//go:nosplit
-func getpref_abort() uint32
-
-//go:nosplit
-func undefined()
-
-//go:nosplit
-func getundefined() uint32
-
-//go:nosplit
-func Mull64(a, b uint32) (uint32, uint32)
-
-//go:nosplit
-func Getloc(loc uint32) uint32
-
-//go:nosplit
-func ReadClock(hi, low uintptr) int64
-
-const Mpcorebase uintptr = uintptr(0xA00000)
-
-var scubase uintptr = Mpcorebase + 0x0
-var globaltimerbase uintptr = Mpcorebase + 0x200
-
-type GlobalTimer_regs struct {
-	counter_lo uint32
-	counter_hi uint32
-	control    uint32
-	intr       uint32
-	compare_lo uint32
-	compare_hi uint32
-	auto_inc   uint32
-}
-
-var global_timer *GlobalTimer_regs = ((*GlobalTimer_regs)(unsafe.Pointer(globaltimerbase)))
-
-//var ns_per_clock_num uint32 = 2
-//var ns_per_clock_denom uint32 = 792000000MHz
-//var ns_per_clock_num uint32 = 2525
-//var ns_per_clock_denom uint32 = 1000
-//var sec_per_ns_denom uint32 = 1000000000
-
-var ns_per_clock_num uint32 = 5
-var ns_per_clock_denom uint32 = 2
-var sec_per_ns_denom uint32 = 1000000000
-
-//1:0x20d8028 2:0x20d8030 3:0x20d8038 scr:0x20d8000
-
-var scr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8000))))
-var cpu1bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8028))))
-var cpu1bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d802C))))
-
-var cpu2bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8030))))
-var cpu2bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8034))))
-
-var cpu3bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8038))))
-var cpu3bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d803C))))
-
-var bootlock Spinlock_t
-
-//go:nosplit
-func cleardcache()
-
-//go:nosplit
-func scu_enable()
-
-//go:nosplit
-func isr_setup()
-
-//go:nosplit
-func mp_init() {
-
-	//SMP bring up is described in section 5.3.4 of DDI 0407G
-
-	//set up stacks, they must be 8 byte aligned
-
-	//first set up isr_stack
-	//other cores will boot off the isr stack
-	start := uint32(boot_alloc(4 * 1028))
-	end := uint32(boot_alloc(0))
-
-	print("start stack: ", hex(start), " end stack: ", hex(end), "\n")
-	for i := uint32(0); i < 4; i++ {
-		isr_stack[i] = physaddr((end - 1024*i) & 0xFFFFFFF8)
-		print("cpu[", i, "] isr stack at ", hex(isr_stack[i]), "\n")
-	}
-	//print("cur cpu: ", cpunum(), "\n")
-
-	if cpunum() != 0 {
-	}
-	cpustatus[0] = CPU_FULL
-
-	scu_enable()
-
-	//set the interrupt stack
-	isr_setup()
-
-	entry := getentry()
-	//replace the push lr at the start of entry with a nop
-	*((*uint32)(unsafe.Pointer(uintptr(entry)))) = NOP
-	//cpu1
-	*cpu1bootaddr = entry
-	*cpu1bootarg = uint32(isr_stack[1])
-	//cpu2
-	*cpu2bootaddr = entry
-	*cpu2bootarg = uint32(isr_stack[2])
-	//cpu3
-	*cpu3bootaddr = entry
-	*cpu3bootarg = uint32(isr_stack[3])
-
-	//	//cpu1
-	//	*cpu1bootaddr = entry
-	//	*cpu1bootarg = uint32(isr_stack[1])
-	//	//val := *scr
-	//	//*scr = val
-	//	DMB()
-	//	for *scr&(0x1<<14|0x1<<18) > 0 {
-	//	}
-	//	*scr |= 0x1 << 22
-	//	for cpustatus[1] == CPU_WFI {
-	//	}
-	//
-	//	//cpu2
-	//	*cpu2bootaddr = entry
-	//	*cpu2bootarg = uint32(isr_stack[2])
-	//	//val = *scr
-	//	//*scr = val
-	//	for *scr&(0x1<<15|0x1<<19) > 0 {
-	//	}
-	//	*scr |= 0x1 << 23
-	//	for cpustatus[2] == CPU_WFI {
-	//	}
-	//
-	//	//cpu3
-	//	*cpu3bootaddr = entry
-	//	*cpu3bootarg = uint32(isr_stack[3])
-	//	val := *scr
-	//	*scr = val
-	//	for *scr&(0x1<<16|0x1<<20) > 0 {
-	//	}
-	//	*scr |= 0x1<<24 | 0x1<<16 | 0x1<<20
-	//	for cpustatus[3] == CPU_WFI {
-	//	}
-	//	//brk()
-}
-
-var stop = 1
-
-//go:nosplit
-func mp_pen() {
-	me := cpunum()
-	loadvbar(unsafe.Pointer(vectab))
-	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
-	cpustatus[me] = CPU_STARTED
-	//for stop == 1 {
-	//}
-	////write_uart([]byte("@"))
-	//loadttbr0(unsafe.Pointer(uintptr(l1_table)))
-	trampoline()
-	throw("cpu release\n")
-}
-
-type GIC_cpu_map struct {
-	cpu_interface_control_register       uint32
-	interrupt_priority_mask_register     uint32
-	binary_point_register                uint32
-	interrupt_acknowledge_register       uint32
-	end_of_interrupt_register            uint32
-	running_priority_register            uint32
-	highest_pending_interrupt_register   uint32
-	aliased_binary_point_register        uint32
-	reserved1                            [8]uint32
-	implementation_defined_registers     [36]uint32
-	reserved2                            [11]uint32
-	cpu_interface_dentification_register uint32
-}
-
-var gic_cpu *GIC_cpu_map = (*GIC_cpu_map)(unsafe.Pointer(uintptr(Getmpcorebase() + 0x100)))
-
-//go:nosplit
-func trampoline() {
-	//have to enable the GIC cpu interface here for each cpu
-	EnableIRQ()
-	me := cpunum()
-	//print("\tcpu_interface_dentification_register core ", me, " : ", hex(gic_cpu.cpu_interface_dentification_register), "\n")
-	gic_cpu.cpu_interface_control_register = 0x03   // enable everything
-	gic_cpu.interrupt_priority_mask_register = 0xFF //unmask everything
-	cpustatus[me] = CPU_RELEASED
-	//disable_interrupts()
-	splock(threadlock)
-	//threadlock.lock()
-	thread_schedule()
-}
-
-//go:nosplit
-func Release(ncpu uint) {
-	//boot n cpus
-	start := uint(1)
-	for cpu := start; cpu < start+ncpu; cpu++ {
-		print("boot cpu ", cpu, " ... ")
-		for *scr&(0x1<<(13+cpu)|0x1<<(17+cpu)) > 0 {
-		}
-		*scr |= 0x1 << (21 + cpu)
-		for cpustatus[cpu] == CPU_WFI {
-		}
-		print("done!\n")
-	}
-}
-
-var IRQmsg chan int = make(chan int, 20)
-
-var trapfn func(irqnum uint32)
-var Booted uint8
-
-//make sure only 1 cpu gets the intended interrupt
-//var irqlock Spinlock_t
-
-///The world might be stopped, we dont really know
-//go:nosplit
-//go:nowritebarrierrec
-func cpucatch() {
-	//lr := RR0()
-	//splock(&irqlock)
-	irqnum := gic_cpu.interrupt_acknowledge_register
-	gic_cpu.end_of_interrupt_register = irqnum
-	//spunlock(&irqlock)
-	g := getg()
-	if g == nil && Booted == 0 {
-		//	if cpustatus[cpunum()] != CPU_FULL {
-		//		write_uart([]byte("not init "))
-		//	}
-		//	write_uart([]byte("crash"))
-		//	//throw("nilg")
-		//	needm(0)
-		//	trapfn()
-		//	dropm()
-		//we missed it
-		//write_uart([]byte("missed"))
-	} else {
-		//	print("LR : ", hex(lr), " cpu ", cpunum(), "\n")
-		//setg(g.m.gsignal)
-		trapfn(irqnum)
-		//	print("INT", cpunum(), " ")
-		//	IRQmsg <- 1
-	}
-	//gic_cpu.end_of_interrupt_register = irqnum
-}
-
-//go:nosplit
-//go:nowritebarrierrec
-func cpuabort() {
-	addr := RR0()
-	mem_addr := RR1()
-	me := cpunum()
-	//err := "abort on cpu" + str(me) + "from addr" + hex(addr) + "\n"
-	//write_uart(err)
-	pte := walk_pgdir(kernpgdir, addr)
-	pte_mem := walk_pgdir(kernpgdir, mem_addr)
-	print("data abort on cpu ", me, " from instruction on addr ", hex(addr), ". Faulting memory addr: ", hex(mem_addr), "\n")
-	print("pte for this instruction addr is : ", hex(*pte), "\n")
-	print("pte for the fault addr is : ", hex(*pte_mem), "\n")
-	print("zerobase is ", hex(zerobase))
-	zerobase_addr := uintptr(unsafe.Pointer(&zerobase))
-	print("zerobase addr is ", hex(zerobase_addr))
-	print("wait for JTAG connection\n")
-	WB_DEFAULT_UART.getchar()
-}
-
-//go:nosplit
-//go:nowritebarrierrec
-func cpuprefabort() {
-	addr := RR0()
-	me := cpunum()
-	pte := walk_pgdir(kernpgdir, addr)
-	print("prefetch abort on cpu ", me, " from addr ", hex(addr), "\n")
-	print("pte for this addr is : ", hex(*pte))
-	print("wait for JTAG connection\n")
-	WB_DEFAULT_UART.getchar()
-}
-
-//go:nosplit
-//go:nowritebarrierrec
-func cpuundefined() {
-	addr := RR0()
-	me := cpunum()
-	print("undefined on cpu ", me, " from addr ", hex(addr), "\n")
-	print("wait for JTAG connection\n")
-	WB_DEFAULT_UART.getchar()
-}
-
-//go:nosplit
-func SetIRQcallback(f func(uint32)) {
-	trapfn = f
 }
 
 //go:nosplit
@@ -1155,22 +750,15 @@ func map_region(pa uint32, va uint32, size uint32, perms uint32) {
 	pa = pa & 0xFFF00000
 	va = va & 0xFFF00000
 	perms = perms | 0x2
-	//realsize := roundup(size, PGSIZE)
 	realsize := roundup(size, PGSIZE)
-	////print("realsize is ", hex(realsize), "\n")
 	i := uint32(0)
 	for ; i <= realsize; i += PGSIZE {
-		//pgnum := pa2pgnum(physaddr(i + pa))
 		nextpa := pa + i
 		l1offset := nextpa >> 18
-		//entry := (*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(l1_table))) + uintptr(pgnum*4)))
-		////print("l1_table: ", hex(uintptr(l1_table)), " offset: ", hex(uint32(l1offset)), "\n")
-		////print("entry addr: ", hex(uintptr(l1_table+physaddr(l1offset))), "\n")
 		entry := (*uint32)(unsafe.Pointer(uintptr(l1_table + physaddr(l1offset))))
 		base_addr := (va + i)
 		*entry = base_addr | perms
 	}
-	//print("mapped region va from ", hex(va), " to ", hex(va+i), "\n")
 }
 
 //go:nosplit
@@ -1179,21 +767,13 @@ func Unmap_region(pa uint32, va uint32, size uint32) {
 	pa = pa & 0xFFF00000
 	va = va & 0xFFF00000
 	realsize := roundup(size, PGSIZE)
-	////print("realsize is ", hex(realsize), "\n")
 	i := uint32(0)
 	for ; i <= realsize; i += PGSIZE {
-		//pgnum := pa2pgnum(physaddr(i + pa))
 		nextpa := pa + i
 		l1offset := nextpa >> 18
-		//entry := (*uint32)(unsafe.Pointer((uintptr(unsafe.Pointer(l1_table))) + uintptr(pgnum*4)))
-		////print("l1_table: ", hex(uintptr(l1_table)), " offset: ", hex(uint32(l1offset)), "\n")
-		////print("entry addr: ", hex(uintptr(l1_table+physaddr(l1offset))), "\n")
 		entry := (*uint32)(unsafe.Pointer(uintptr(l1_table + physaddr(l1offset))))
 		*entry = 0
-		//base_addr := (va + i)
-		//*entry = base_addr | perms
 	}
-	//print("mapped region va from ", hex(va), " to ", hex(va+i), "\n")
 }
 
 //go:nosplit
@@ -1201,11 +781,9 @@ func map_kernel() {
 	//read the kernel elf to find the regions of the kernel
 	elf := ((*Elf)(unsafe.Pointer(uintptr(kernelstart))))
 	if elf.magic != ELF_MAGIC {
-		//print("bad kernel elf header\n")
 		throw("bad elf header in the kernel\n")
 	}
 
-	//print("mapping kernel:\n")
 	for i := uintptr(0); i < uintptr(elf.e_phnum); i++ {
 		ph := ((*Proghdr)(unsafe.Pointer(uintptr(elf.e_phoff) + uintptr(i*unsafe.Sizeof(Proghdr{})) + uintptr(kernelstart))))
 		if ph.p_type == ELF_PROG_LOAD {
@@ -1213,7 +791,6 @@ func map_kernel() {
 			pa := ph.p_pa
 			va := ph.p_va
 			print("\tkernel pa: ", hex(pa), " va: ", hex(va), " size: ", hex(filesz), "\n")
-			//map_region(pa, va, filesz, MEM_NORMAL_SMP)
 			map_region(pa, va, filesz, MEM_TYPE_DEVICE)
 		}
 	}
@@ -1221,20 +798,16 @@ func map_kernel() {
 	//install the kernel page table
 
 	//map the uart
-	//print("mapping uart\n")
 	map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
 
 	//map the timer
-	//print("mapping peripherals + timer\n")
 	map_region(uint32(PERIPH_START), uint32(PERIPH_START), PGSIZE, MEM_TYPE_DEVICE)
 
 	//map the stack and boot_alloc scratch space
-	//print("mapping stack + page tables\n")
 	nextfree := boot_alloc(0)
 	if uint32(nextfree) < (uint32(RAM_START) + RAM_SIZE - ONE_MEG) {
 		throw("out of scratch space\n")
 	}
-	//map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_NORMAL_SMP)
 	map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_TYPE_DEVICE)
 
 	cpustatus[0] = CPU_FULL
@@ -1242,22 +815,9 @@ func map_kernel() {
 	//unfortunately this has to happen in order to boot other cpus
 	map_region(uint32(0x0), uint32(0x0), 256*PGSIZE, MEM_TYPE_DEVICE)
 
-	//map the src
-	//map_region(uint32(0x2000000), uint32(0x2000000), PGSIZE, MEM_TYPE_DEVICE)
-	//map_region(uint32(0x2000000), uint32(0x2000000), PGSIZE, MEM_TYPE_DEVICE)
-
-	//identity map [kernelstart, boot_alloc(0))
-	//	//print("kernel start is ", hex(uint32(kernelstart)), "\n")
-	//
-	//	map_region(uint32(kernelstart), uint32(kernelstart), uint32(KERNEL_END-kernelstart), 0x0)
-	//
-	//	map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, 0x0)
-	//	//print("boot_alloc(0) is ", hex(uint32(boot_alloc(0))), "\n")
-	//	showl1table()
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
 	kernpgdir = (uintptr)(unsafe.Pointer(uintptr(l1_table)))
-	//print("mapped kernel identity\n")
 }
 
 //go:nosplit
@@ -1296,30 +856,6 @@ func spunlock(l *Spinlock_t) {
 	*l = 0
 }
 
-//type Spinlock_t struct {
-//	v uint32
-//	//holder int
-//}
-//
-////go:nosplit
-//func (l *Spinlock_t) lock() {
-//	//disable_interrupts()
-//	for {
-//		if atomic.Cas(&l.v, 0, 1) {
-//			//l.holder = cpunum()
-//			//	enable_interrupts()
-//			return
-//		}
-//	}
-//}
-
-////go:nosplit
-//func (l *Spinlock_t) unlock() {
-//	//l.holder = -1
-//	l.v = 0
-//	//DMB()
-//}
-
 type Ticketlock_t struct {
 	v      uint32
 	holder int
@@ -1348,16 +884,12 @@ var maplock *Spinlock_t
 // mmap calls the mmap system call.  It is implemented in assembly.
 //go:nosplit
 func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32) unsafe.Pointer {
-	//maplock.lock()
 	splock(maplock)
 	va := uintptr(addr)
 	size := uint32(roundup(uint32(n), PGSIZE))
 	print("mmap_arm: ", hex(va), " ", hex(n), " ", hex(prot), " ", hex(flags), "\n")
 
 	if va == 0 {
-		//throw("cowardly refusing to map 0\n")
-		//need to find a contiguous amount of virtual mem with size
-		//find the first chunk of contiguous free space in virtual memory
 		for pgnum := uint32(KERNEL_END >> PGSHIFT); pgnum < 4096; pgnum += 1 {
 			if checkcontiguousfree(kernpgdir, uint32(pgnum<<PGSHIFT), size) == true {
 				va = uintptr(pgnum << PGSHIFT)
@@ -1371,49 +903,27 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 
 	//Question: what should we do when the runtime calls mmap on addresses that are
 	//already mapped?
-	//clear := true
+	// Linux says zero them and re-map
 	for start := va; start < (va + uintptr(size)); start += uintptr(PGSIZE) {
 		pte := walk_pgdir(kernpgdir, uint32(start))
-		//		if *pte&0x2 > 0 {
-		//			//print("mmap_fixed failure for va: ", hex(start), " because it's already mapped\n")
-		//			//print("pte addr ", hex(uintptr(unsafe.Pointer(pte))), " contents ", hex(*pte), "\n")
-		//			//panic(".")
-		//			//clear = false
-		//			continue
-		//		}
 		page := page_alloc()
 		if page == nil {
 			throw("mmap_arm: out of memory\n")
 		}
 		pa := pageinfo2pa(page) & 0xFFF00000
-		//*pte = uint32(pa) | 0x2 | MEM_NORMAL_SMP
 		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
 		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
-	//showl1table()
-	//print("reloading page table\n")
-	//memclrbytes(unsafe.Pointer(va), uintptr(size))
-	//if clear == true {
-	//	//print("clearing... ")
-	//	memclrNoHeapPointers(unsafe.Pointer(va), uintptr(size))
-	//	//memclrbytes(unsafe.Pointer(va), uintptr(size))
-	//}
 	invallpages()
 	DMB()
-	//showl1table()
 	spunlock(maplock)
-	//maplock.unlock()
-	//print("updated page tables -> ", hex(va), "\n")
 	return unsafe.Pointer(va)
 }
 
 var timelock *Spinlock_t
 
-//var curtime = 0
-
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
-	//timelock.lock()
 	splock(timelock)
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
@@ -1426,7 +936,264 @@ func clk_gettime(clock_type uint32, ts *timespec) {
 	ts.tv_sec = int32(sec)
 	ts.tv_nsec = int32(nsec)
 	spunlock(timelock)
-	//timelock.unlock()
+}
+
+//
+// MULTICORE BOOT
+//
+
+//go:nosplit
+func cpunum() int
+
+//go:nosplit
+func Cpunum() int {
+	return cpunum()
+}
+
+//go:nosplit
+func boot_any()
+
+//go:nosplit
+func getentry() uint32
+
+//go:nosplit
+func catch()
+
+//go:nosplit
+func getcatch() uint32
+
+//go:nosplit
+func abort_int()
+
+//go:nosplit
+func getabort_int() uint32
+
+//go:nosplit
+func pref_abort()
+
+//go:nosplit
+func getpref_abort() uint32
+
+//go:nosplit
+func undefined()
+
+//go:nosplit
+func getundefined() uint32
+
+//go:nosplit
+func Mull64(a, b uint32) (uint32, uint32)
+
+//go:nosplit
+func Getloc(loc uint32) uint32
+
+//go:nosplit
+func ReadClock(hi, low uintptr) int64
+
+const Mpcorebase uintptr = uintptr(0xA00000)
+
+var scubase uintptr = Mpcorebase + 0x0
+var globaltimerbase uintptr = Mpcorebase + 0x200
+
+type GlobalTimer_regs struct {
+	counter_lo uint32
+	counter_hi uint32
+	control    uint32
+	intr       uint32
+	compare_lo uint32
+	compare_hi uint32
+	auto_inc   uint32
+}
+
+var global_timer *GlobalTimer_regs = ((*GlobalTimer_regs)(unsafe.Pointer(globaltimerbase)))
+
+var ns_per_clock_num uint32 = 5
+var ns_per_clock_denom uint32 = 2
+var sec_per_ns_denom uint32 = 1000000000
+
+//1:0x20d8028 2:0x20d8030 3:0x20d8038 scr:0x20d8000
+
+var scr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8000))))
+var cpu1bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8028))))
+var cpu1bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d802C))))
+
+var cpu2bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8030))))
+var cpu2bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8034))))
+
+var cpu3bootaddr *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d8038))))
+var cpu3bootarg *uint32 = ((*uint32)(unsafe.Pointer(uintptr(0x20d803C))))
+
+var bootlock Spinlock_t
+
+//go:nosplit
+func cleardcache()
+
+//go:nosplit
+func scu_enable()
+
+//go:nosplit
+func isr_setup()
+
+//go:nosplit
+func mp_init() {
+
+	//SMP bring up is described in section 5.3.4 of DDI 0407G
+
+	//set up stacks, they must be 8 byte aligned
+
+	//first set up isr_stack
+	//other cores will boot off the isr stack
+	start := uint32(boot_alloc(4 * 1028))
+	end := uint32(boot_alloc(0))
+
+	print("start stack: ", hex(start), " end stack: ", hex(end), "\n")
+	for i := uint32(0); i < 4; i++ {
+		isr_stack[i] = physaddr((end - 1024*i) & 0xFFFFFFF8)
+		print("cpu[", i, "] isr stack at ", hex(isr_stack[i]), "\n")
+	}
+
+	if cpunum() != 0 {
+	}
+	cpustatus[0] = CPU_FULL
+
+	scu_enable()
+
+	//set the interrupt stack
+	isr_setup()
+
+	entry := getentry()
+	//replace the push lr at the start of entry with a nop
+	*((*uint32)(unsafe.Pointer(uintptr(entry)))) = NOP
+	//cpu1
+	*cpu1bootaddr = entry
+	*cpu1bootarg = uint32(isr_stack[1])
+	//cpu2
+	*cpu2bootaddr = entry
+	*cpu2bootarg = uint32(isr_stack[2])
+	//cpu3
+	*cpu3bootaddr = entry
+	*cpu3bootarg = uint32(isr_stack[3])
+
+}
+
+//go:nosplit
+func mp_pen() {
+	me := cpunum()
+	loadvbar(unsafe.Pointer(vectab))
+	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
+	cpustatus[me] = CPU_STARTED
+	trampoline()
+	throw("cpu release\n")
+}
+
+type GIC_cpu_map struct {
+	cpu_interface_control_register       uint32
+	interrupt_priority_mask_register     uint32
+	binary_point_register                uint32
+	interrupt_acknowledge_register       uint32
+	end_of_interrupt_register            uint32
+	running_priority_register            uint32
+	highest_pending_interrupt_register   uint32
+	aliased_binary_point_register        uint32
+	reserved1                            [8]uint32
+	implementation_defined_registers     [36]uint32
+	reserved2                            [11]uint32
+	cpu_interface_dentification_register uint32
+}
+
+var gic_cpu *GIC_cpu_map = (*GIC_cpu_map)(unsafe.Pointer(uintptr(Getmpcorebase() + 0x100)))
+
+//go:nosplit
+func trampoline() {
+	//have to enable the GIC cpu interface here for each cpu
+	EnableIRQ()
+	me := cpunum()
+	gic_cpu.cpu_interface_control_register = 0x03   // enable everything
+	gic_cpu.interrupt_priority_mask_register = 0xFF //unmask everything
+	cpustatus[me] = CPU_RELEASED
+	splock(threadlock)
+	thread_schedule()
+}
+
+//go:nosplit
+func Release(ncpu uint) {
+	//boot n cpus
+	start := uint(1)
+	for cpu := start; cpu < start+ncpu; cpu++ {
+		print("boot cpu ", cpu, " ... ")
+		for *scr&(0x1<<(13+cpu)|0x1<<(17+cpu)) > 0 {
+		}
+		*scr |= 0x1 << (21 + cpu)
+		for cpustatus[cpu] == CPU_WFI {
+		}
+		print("done!\n")
+	}
+}
+
+//
+// INTERRUPTS
+//
+
+var trapfn func(irqnum uint32)
+var Booted uint8
+
+///The world might be stopped, we dont really know
+//go:nosplit
+//go:nowritebarrierrec
+func cpucatch() {
+	/*
+	* Make sure only one cpu gets the interrupt?
+	 */
+	irqnum := gic_cpu.interrupt_acknowledge_register
+	gic_cpu.end_of_interrupt_register = irqnum
+	g := getg()
+	if g == nil && Booted == 0 {
+	} else {
+		trapfn(irqnum)
+	}
+}
+
+//
+// FAULTS
+//
+
+//go:nosplit
+//go:nowritebarrierrec
+func cpuabort() {
+	addr := RR0()
+	mem_addr := RR1()
+	me := cpunum()
+	pte := walk_pgdir(kernpgdir, addr)
+	pte_mem := walk_pgdir(kernpgdir, mem_addr)
+	print("data abort on cpu ", me, " from instruction on addr ", hex(addr), ". Faulting memory addr: ", hex(mem_addr), "\n")
+	print("pte for this instruction addr is : ", hex(*pte), "\n")
+	print("pte for the fault addr is : ", hex(*pte_mem), "\n")
+	print("zerobase is ", hex(zerobase))
+	zerobase_addr := uintptr(unsafe.Pointer(&zerobase))
+	print("zerobase addr is ", hex(zerobase_addr))
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
+}
+
+//go:nosplit
+//go:nowritebarrierrec
+func cpuprefabort() {
+	addr := RR0()
+	me := cpunum()
+	pte := walk_pgdir(kernpgdir, addr)
+	print("prefetch abort on cpu ", me, " from addr ", hex(addr), "\n")
+	print("pte for this addr is : ", hex(*pte))
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
+}
+
+//go:nosplit
+//go:nowritebarrierrec
+func cpuundefined() {
+	addr := RR0()
+	me := cpunum()
+	print("undefined on cpu ", me, " from addr ", hex(addr), "\n")
+	print("wait for JTAG connection\n")
+	WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit
@@ -1438,8 +1205,9 @@ func DisableIRQ()
 //go:nosplit
 func Getmpcorebase() uintptr
 
-/////////////signals for interrupts
-////look in defs_linux_arm.go
+//
+// UNUSED - Signal Handlers for Interrupts
+//
 
 var irqfunc uintptr = 0
 
