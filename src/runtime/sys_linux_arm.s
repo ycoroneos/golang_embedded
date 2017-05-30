@@ -207,7 +207,7 @@ TEXT runtime·walltime(SB), NOSPLIT, $32
 	MOVW $0, R0                 // CLOCK_REALTIME
 	MOVW $8(R13), R1            // timespec
 	MOVW $SYS_clock_gettime, R7
-	SWI  $0
+	CALL ·trap_debug(SB)
 
 	MOVW 8(R13), R0  // sec
 	MOVW 12(R13), R2 // nsec
