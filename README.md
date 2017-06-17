@@ -1,17 +1,30 @@
-# The Go Programming Language Modified To Run On Baremetal ARMv7a
+# The Go Programming Language For Bare-Metal ARMv7a
 
-Now you can write high-level, concurrent embedded programs without
-the weight of Linux slowing it down.
+This repo contains my modifications to Go that enable it
+to run bare-metal on armv7a SOCs. The basic OS primitives that
+Go relies on have been re-implemented in Go and Plan 9 assembly
+inside the `runtime` package.
 
 This repo tracks the master branch of the main go repo at https://github.com/golang/go.
 
 This modified runtime is also an integral part of G.E.R.T,
-the Golang Embedded RunTime. Check it out for examples of
-the modified runtime in action.
+the Golang Embedded RunTime. Check it out for working examples.
 
 https://github.com/ycoroneos/G.E.R.T
 
-##Usage
+## Modifications from Go
+
+The majority of the runtime modifications are inside `src/runtime`.
+
+
+  |File | Functions |
+  |----------|----------|
+  |`src/runtime/gert_arm.go`| Scheduler, context switching, SMP booting, virtual memory, trap handling|
+  |`src/runtime/gertasm_arm.s`| Assembly routines for ARM global timer, saving/restoring trapframes, interrupt entry points, trampolines for booting cpus, mpcore configuration, loading ttbr0|
+  |`src/runtime/gertcommon.go`| Contains global `Armhackmode` variable for triggering certain GERT-specific boot tasks in the runtime|
+
+
+## Usage
 The freescale iMX6Quad is hard-coded in. If you are using this SOC
 then you are in luck! In your Go program include a stub like this:
 ```
@@ -41,7 +54,7 @@ holding pen, do this somewhere in your program:
 You will need a bootloader to boot your shiny new baremetal Go program.
 I recommend uBoot.
 
-##Modification
+## Modification
 If the iMX6Quad is not your SOC then you can still use this code but you
 will have to write some drivers.
 
