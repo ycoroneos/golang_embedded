@@ -1,13 +1,14 @@
 # The Go Programming Language For Bare-Metal ARMv7a
 
-This repo contains my modifications to Go that enable it
+These are my modifications to Go that enable it
 to run bare-metal on armv7a SOCs. The basic OS primitives that
 Go relies on have been re-implemented in Go and Plan 9 assembly
 inside the `runtime` package.
 
-This repo tracks the master branch of the main go repo at https://github.com/golang/go.
+This repo tracks the master branch of the main go repo at https://github.com/golang/go. One day this code
+might even be part of Go but, until then, it will sit here.
 
-This modified runtime is also an integral part of G.E.R.T,
+The modified runtime is also an integral part of G.E.R.T,
 the Golang Embedded RunTime. Check it out for working examples.
 
 https://github.com/ycoroneos/G.E.R.T
