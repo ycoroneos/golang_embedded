@@ -13,6 +13,12 @@
 
 // using frame size $-4 means do not save LR on stack.
 TEXT runtime·rt0_go(SB), NOSPLIT, $-4
+	// set our shiny new stack pointer
+	MOVW $runtime·scratch(SB), R13
+	MOVW $0x5000, R0
+	ADD  R0, R13
+	AND  $0x4000, R13
+
 	MOVW $0xcafebabe, R12
 
 	// load kernel start and elf size
@@ -65,17 +71,23 @@ TEXT runtime·rt0_go(SB), NOSPLIT, $-4
 	MOVW R0, 4(R13)
 	MOVW 64(R13), R1
 	MOVW R1, 8(R13)
-	BL   runtime·args(SB)
-	BL   runtime·checkgoarm(SB)
-	BL   runtime·osinit(SB)
+
+	//	BL   runtime·args(SB)
+	BL runtime·checkgoarm(SB)
+	BL runtime·osinit(SB)
+
 	MOVW R13, runtime·bootstack(SB)
-	BL   runtime·clock_init(SB)
-	BL   runtime·mem_init(SB)
-	BL   runtime·map_kernel(SB)
-	BL   runtime·mp_init(SB)
-	BL   runtime·page_init(SB)
-	BL   runtime·thread_init(SB)
-	BL   runtime·schedinit(SB)
+
+	BL runtime·core_init(SB)
+
+	// BL   runtime·clock_init(SB)
+	BL runtime·mem_init(SB)
+	BL runtime·map_kernel(SB)
+
+	// BL runtime·mp_init(SB)
+	BL runtime·page_init(SB)
+	BL runtime·thread_init(SB)
+	BL runtime·schedinit(SB)
 
 	// create a new goroutine to start program
 	MOVW   $runtime·mainPC(SB), R0

@@ -8,6 +8,11 @@ import "runtime/internal/atomic"
 
 const NOP = 0xe320f000
 
+var scratchspace [ONE_MEG * 3]byte
+
+var scratch_top uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[0])))) + ONE_MEG&0xFFF00000
+var scratch_bottom uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[(ONE_MEG*3)-1])))) & 0xFFF00000
+
 //for booting
 func Runtime_main()
 
@@ -75,7 +80,8 @@ func trap_debug() {
 		ret := uint32(0xffffffff)
 		if arg0 == 1 || arg0 == 2 {
 			splock(&writelock)
-			ret = write_uart_unsafe(uintptr(arg1), arg2)
+			//ret = write_uart_unsafe(uintptr(arg1), arg2)
+			ret = write_virtv7(uintptr(arg1), arg2)
 			spunlock(&writelock)
 		} else {
 		}
@@ -436,8 +442,14 @@ func DMB()
 //assume we will be addressing 4gb of memory
 //using the short descriptor page format
 
-const RAM_START = physaddr(0x10000000)
-const RAM_SIZE = uint32(0x80000000)
+//ram info for imx6
+//const RAM_START = physaddr(0x10000000)
+//const RAM_SIZE = uint32(0x80000000)
+//const ONE_MEG = uint32(0x00100000)
+
+//ram info for virt-v7
+const RAM_START = physaddr(0x40000000)
+const RAM_SIZE = uint32(0x10000000)
 const ONE_MEG = uint32(0x00100000)
 
 const PERIPH_START = physaddr(0x110000)
@@ -451,6 +463,7 @@ const VBAR_ALIGNMENT = uint32(0x20)
 
 var kernelstart physaddr
 var kernelsize physaddr
+
 var bootstack physaddr
 
 type Interval struct {
@@ -495,6 +508,16 @@ const KERNEL_END = physaddr(0x40200000)
 var boot_end physaddr
 
 const PageInfoSz = uint32(8)
+
+type MemRange struct {
+	start uint32
+	end   uint32
+}
+
+const BLACKLIST_LENGTH = 100
+
+var page_blacklist [BLACKLIST_LENGTH]MemRange
+var page_blacklist_index uint32
 
 type PageInfo struct {
 	next_pageinfo uintptr
@@ -574,6 +597,22 @@ func boot_alloc(size uint32) physaddr {
 }
 
 /*
+* Print a nice message and find out where all of the ARM peripherals live
+ */
+
+//go:nosplit
+func core_init() {
+	print("core init:\n")
+	base := Getmpcorebase()
+	fullbase := uint64(0)
+	fullbase = (uint64(base&0xFF) << 32) | uint64(base&0xFFFF0000)
+	print("mpcore base lives at: ", hex(fullbase), "\n")
+	if (base & 0xFF) > 0 {
+		print("mpcore base lives above 4G!! abort\n")
+	}
+}
+
+/*
 * Turn on the 64bit ARM global timer.
 *It will never roll over unless gert runs for over 1000 years.
  */
@@ -591,8 +630,14 @@ func mem_init() {
 
 	//allocate the l1 table
 	//4 bytes each and 4096 entries
-	boot_end = physaddr(roundup(uint32(bootstack), L1_ALIGNMENT))
+	//boot_end = physaddr(roundup(uint32(bootstack), L1_ALIGNMENT))
+	print("bootstack at ", hex(bootstack), "\n")
+	print("scratch_top at ", hex(scratch_top), "\n")
+	print("scratch_bottom at ", hex(scratch_bottom), "\n")
+	boot_end = physaddr(scratch_top)
+	print("boot end start at ", hex(boot_end), "\n")
 	l1_table = boot_alloc(4 * 4096)
+	print("l1 table at ", hex(l1_table), "\n")
 
 	//allocate the vector table
 	boot_end = physaddr(roundup(uint32(boot_end), VBAR_ALIGNMENT))
@@ -629,6 +674,7 @@ func mem_init() {
 	end := uint32(boot_alloc(0))
 	for i := uint32(0); i < 4; i++ {
 		threadstacks[i] = (end - 1024*i) & uint32(0xFFFFFFF8)
+		print("thread stack for cpu ", i, " lives at ", hex(threadstacks[i]), "\n")
 	}
 
 	pages = uintptr(boot_alloc(npages * 8))
@@ -689,27 +735,49 @@ func zeropage(pa physaddr) {
 //go:nosplit
 func page_init() {
 	//construct a linked-list of free pages
-	//print("start page init\n")
+	print("start page init\n")
 	nfree := uint32(0)
 	nextfree = 0
-	for i := pa2pgnum(RAM_START); i < pa2pgnum(physaddr(uint32(RAM_START)+RAM_SIZE)); i++ {
+	//	stack_top := uint32(bootstack) & 0xFFF00000
+	//	boot_bottom := roundup(uint32(nextfree), PGSIZE)
+	//for i := pa2pgnum(RAM_START); i < pa2pgnum(physaddr(uint32(RAM_START)+RAM_SIZE)); i++ {
+	//	for i := pa2pgnum(physaddr(uint32(RAM_START) + RAM_SIZE)); i >= pa2pgnum(physaddr(uint32(RAM_START))); i-- {
+	//		pa := pgnum2pa(i)
+	//		pagenfo := pa2page(pa)
+	//		if pa >= physaddr(RAM_START) && pa < kernelstart {
+	//			//zeropage(pa)
+	//			print("adding pa ", hex(pa), "to page free list\n")
+	//			pagenfo.next_pageinfo = nextfree
+	//			pagenfo.ref = 0
+	//			nextfree = uintptr(unsafe.Pointer(pagenfo))
+	//			nfree += 1
+	//			//} else if pa >= physaddr(KERNEL_END) && pa < physaddr(uint32(RAM_START)+uint32(RAM_SIZE)-uint32(ONE_MEG)) {
+	//		} else if pa >= physaddr(KERNEL_END) && (uint32(pa) < stack_top || uint32(pa) > boot_bottom) {
+	//			//zeropage(pa)
+	//			print("adding pa ", hex(pa), "to page free list\n")
+	//			pagenfo.next_pageinfo = nextfree
+	//			pagenfo.ref = 0
+	//			nextfree = uintptr(unsafe.Pointer(pagenfo))
+	//			nfree += 1
+	//		} else {
+	//			print("skipping pa ", hex(pa), "\n")
+	//			pagenfo.ref = 1
+	//			pagenfo.next_pageinfo = 0
+	//		}
+	//	}
+	for i := pa2pgnum(physaddr(uint32(RAM_START) + RAM_SIZE)); i >= pa2pgnum(physaddr(uint32(RAM_START))); i-- {
 		pa := pgnum2pa(i)
 		pagenfo := pa2page(pa)
-		if pa >= physaddr(RAM_START) && pa < kernelstart {
-			//zeropage(pa)
-			pagenfo.next_pageinfo = nextfree
-			pagenfo.ref = 0
-			nextfree = uintptr(unsafe.Pointer(pagenfo))
-			nfree += 1
-		} else if pa >= physaddr(KERNEL_END) && pa < physaddr(uint32(RAM_START)+uint32(RAM_SIZE)-uint32(ONE_MEG)) {
-			//zeropage(pa)
-			pagenfo.next_pageinfo = nextfree
-			pagenfo.ref = 0
-			nextfree = uintptr(unsafe.Pointer(pagenfo))
-			nfree += 1
-		} else {
+		if isblacklisted(uint32(pa)) {
+			//print("skipping pa ", hex(pa), "\n")
 			pagenfo.ref = 1
 			pagenfo.next_pageinfo = 0
+		} else {
+			//print("adding pa ", hex(pa), "to page free list\n")
+			pagenfo.next_pageinfo = nextfree
+			pagenfo.ref = 0
+			nextfree = uintptr(unsafe.Pointer(pagenfo))
+			nfree += 1
 		}
 	}
 	//print("page init done\n")
@@ -740,6 +808,27 @@ func checkcontiguousfree(pgdir uintptr, va, size uint32) bool {
 	return true
 }
 
+//go:nosplit
+func blacklist_range(memrange MemRange) bool {
+	if page_blacklist_index < BLACKLIST_LENGTH {
+		page_blacklist[page_blacklist_index] = memrange
+		page_blacklist_index += 1
+		return true
+	} else {
+		return false
+	}
+}
+
+//go:nosplit
+func isblacklisted(memaddr uint32) bool {
+	for i := uint32(0); i < page_blacklist_index; i++ {
+		if memaddr >= page_blacklist[i].start && memaddr < page_blacklist[i].end {
+			return true
+		}
+	}
+	return false
+}
+
 //device memory, TEX[2:0] = 0b010, S=0
 const MEM_TYPE_DEVICE = uint32(0x2 << 12)
 
@@ -754,6 +843,7 @@ func map_region(pa uint32, va uint32, size uint32, perms uint32) {
 	va = va & 0xFFF00000
 	perms = perms | 0x2
 	realsize := roundup(size, PGSIZE)
+	print("mapping va ", hex(va), " -> ", hex(va+realsize), " to pa ", hex(pa), " -> ", hex(pa+realsize), "\n")
 	i := uint32(0)
 	for ; i <= realsize; i += PGSIZE {
 		nextpa := pa + i
@@ -795,32 +885,46 @@ func map_kernel() {
 			va := ph.p_va
 			print("\tkernel pa: ", hex(pa), " va: ", hex(va), " size: ", hex(filesz), "\n")
 			map_region(pa, va, filesz, MEM_TYPE_DEVICE)
+			blacklist_range(MemRange{pa & 0xFFF00000, roundup(pa+filesz+ONE_MEG, PGSIZE)})
 		}
 	}
 
 	//install the kernel page table
 
 	//map the uart
-	map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
+	//map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
+	map_region(0x09000000, 0x09000000, PGSIZE, MEM_TYPE_DEVICE)
+	blacklist_range(MemRange{0x09000000, roundup(0x09000000+PGSIZE+ONE_MEG, PGSIZE)})
 
 	//map the timer
-	map_region(uint32(PERIPH_START), uint32(PERIPH_START), PGSIZE, MEM_TYPE_DEVICE)
+	//map_region(uint32(PERIPH_START), uint32(PERIPH_START), PGSIZE, MEM_TYPE_DEVICE)
 
 	//map the stack and boot_alloc scratch space
-	nextfree := boot_alloc(0)
-	if uint32(nextfree) < (uint32(RAM_START) + RAM_SIZE - ONE_MEG) {
-		throw("out of scratch space\n")
-	}
-	map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_TYPE_DEVICE)
+
+	//	nextfree := boot_alloc(0)
+	//	stack_top := uint32(bootstack) & 0xFFF00000
+	//	boot_bottom := roundup(uint32(nextfree), PGSIZE)
+	//	if (boot_bottom-stack_top)%PGSIZE != 0 {
+	//		print("static boot region not page aligned\n")
+	//	}
+	//if uint32(nextfree) < (uint32(RAM_START) + RAM_SIZE - ONE_MEG) {
+	//	throw("out of scratch space\n")
+	//}
+	//map_region(uint32(uint32(RAM_START)+RAM_SIZE-ONE_MEG), uint32(RAM_START)+RAM_SIZE-ONE_MEG, PGSIZE, MEM_TYPE_DEVICE)
+	//	print("stack top is at: ", hex(stack_top), "\n")
+	//	print("boot_end is at: ", hex(boot_bottom), "\n")
+	//	map_region(stack_top, stack_top, boot_bottom-stack_top, MEM_TYPE_DEVICE)
+	//	blacklist_range(MemRange{stack_top, boot_bottom + ONE_MEG})
 
 	cpustatus[0] = CPU_FULL
 	//map the boot rom
 	//unfortunately this has to happen in order to boot other cpus
-	map_region(uint32(0x0), uint32(0x0), 256*PGSIZE, MEM_TYPE_DEVICE)
+	//map_region(uint32(0x0), uint32(0x0), 128*PGSIZE, MEM_TYPE_DEVICE)
 
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
 	kernpgdir = (uintptr)(unsafe.Pointer(uintptr(l1_table)))
+	//showl1table()
 }
 
 //go:nosplit
@@ -909,16 +1013,24 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	// Linux says zero them and re-map
 	for start := va; start < (va + uintptr(size)); start += uintptr(PGSIZE) {
 		pte := walk_pgdir(kernpgdir, uint32(start))
+		if *pte&0x2 > 0 {
+			print("pte ", hex(start>>PGSHIFT), " is already mapped to ", hex(*pte), "\n")
+			throw("error there is already an entry here")
+		}
 		page := page_alloc()
 		if page == nil {
 			throw("mmap_arm: out of memory\n")
 		}
 		pa := pageinfo2pa(page) & 0xFFF00000
 		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
+		//print("mapping physaddr ", hex(uint32(pa)), " to va ", hex(start), "\n")
 		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
+	print("invallpages\n")
 	invallpages()
+	print("DMB\n")
 	DMB()
+	print("spunlock\n")
 	spunlock(maplock)
 	return unsafe.Pointer(va)
 }
