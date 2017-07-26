@@ -10,8 +10,11 @@ const NOP = 0xe320f000
 
 var scratchspace [ONE_MEG * 3]byte
 
-var scratch_top uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[0])))) + ONE_MEG&0xFFF00000
-var scratch_bottom uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[(ONE_MEG*3)-1])))) & 0xFFF00000
+//var scratch_top uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[0])))) + ONE_MEG&0xFFF00000
+//var scratch_bottom uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[(ONE_MEG*3)-1])))) & 0xFFF00000
+
+const scratch_top = 0x40000000
+const scratch_bottom = 0x40200000
 
 //for booting
 func Runtime_main()
@@ -871,6 +874,7 @@ func Unmap_region(pa uint32, va uint32, size uint32) {
 
 //go:nosplit
 func map_kernel() {
+	print("mapping kernel address space\n")
 	//read the kernel elf to find the regions of the kernel
 	elf := ((*Elf)(unsafe.Pointer(uintptr(kernelstart))))
 	if elf.magic != ELF_MAGIC {
@@ -915,6 +919,10 @@ func map_kernel() {
 	//	print("boot_end is at: ", hex(boot_bottom), "\n")
 	//	map_region(stack_top, stack_top, boot_bottom-stack_top, MEM_TYPE_DEVICE)
 	//	blacklist_range(MemRange{stack_top, boot_bottom + ONE_MEG})
+
+	//map the stack and scratch space
+	map_region(scratch_top, scratch_top, scratch_bottom-scratch_top, MEM_TYPE_DEVICE)
+	blacklist_range(MemRange{scratch_top, scratch_bottom + ONE_MEG})
 
 	cpustatus[0] = CPU_FULL
 	//map the boot rom
@@ -1023,7 +1031,7 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 		}
 		pa := pageinfo2pa(page) & 0xFFF00000
 		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
-		//print("mapping physaddr ", hex(uint32(pa)), " to va ", hex(start), "\n")
+		print("mapping physaddr ", hex(uint32(pa)), " to va ", hex(start), "\n")
 		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
 	print("invallpages\n")

@@ -14,11 +14,12 @@
 // using frame size $-4 means do not save LR on stack.
 TEXT runtime·rt0_go(SB), NOSPLIT, $-4
 	// set our shiny new stack pointer
-	MOVW $runtime·scratch(SB), R13
-	MOVW $0x5000, R0
-	ADD  R0, R13
-	AND  $0x4000, R13
+	//	MOVW $runtime·scratch(SB), R13
+	//	MOVW $0x5000, R0
+	//	ADD  R0, R13
+	//	AND  $0x4000, R13
 
+	MOVW $0x40200000, R13
 	MOVW $0xcafebabe, R12
 
 	// load kernel start and elf size
