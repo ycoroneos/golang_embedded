@@ -13,7 +13,7 @@ var scratchspace [ONE_MEG * 3]byte
 //var scratch_top uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[0])))) + ONE_MEG&0xFFF00000
 //var scratch_bottom uint32 = uint32(((uintptr)(unsafe.Pointer(&scratchspace[(ONE_MEG*3)-1])))) & 0xFFF00000
 
-const scratch_top = 0x40000000
+const scratch_top = 0x40100000
 const scratch_bottom = 0x40200000
 
 //for booting
@@ -70,7 +70,6 @@ func trap_debug() {
 	arg5 := RR5()
 	arg6 := RR6()
 	trapno := RR7()
-	//print("incoming trap: ", trapno, "\n")
 	switch trapno {
 	case 1:
 		print("exit")
@@ -350,6 +349,7 @@ func thread_schedule() {
 
 //go:nosplit
 func idle() {
+	//should probably wfi or something
 }
 
 //go:nosplit
@@ -451,8 +451,8 @@ func DMB()
 //const ONE_MEG = uint32(0x00100000)
 
 //ram info for virt-v7
-const RAM_START = physaddr(0x40000000)
-const RAM_SIZE = uint32(0x10000000)
+const RAM_START = physaddr(0x40100000)
+const RAM_SIZE = uint32(0x40000000)
 const ONE_MEG = uint32(0x00100000)
 
 const PERIPH_START = physaddr(0x110000)
@@ -594,6 +594,7 @@ func boot_alloc(size uint32) physaddr {
 	result := boot_end
 	newsize := uint32(roundup(uint32(size), 0x4))
 	boot_end = boot_end + physaddr(newsize)
+	//print("boot end becomes ", hex(boot_end), "\n")
 	memclrNoHeapPointers(unsafe.Pointer(uintptr(result)), uintptr(newsize))
 	DMB()
 	return result
@@ -629,7 +630,8 @@ func clock_init() {
 
 //go:nosplit
 func mem_init() {
-	npages = RAM_SIZE / PGSIZE
+	//npages = RAM_SIZE / PGSIZE
+	npages = 4096
 
 	//allocate the l1 table
 	//4 bytes each and 4096 entries
@@ -683,6 +685,7 @@ func mem_init() {
 	pages = uintptr(boot_alloc(npages * 8))
 	physPageSize = uintptr(PGSIZE)
 
+	print("boot alloc finished at ", hex(boot_alloc(0)), "\n")
 }
 
 //go:nosplit
@@ -772,11 +775,9 @@ func page_init() {
 		pa := pgnum2pa(i)
 		pagenfo := pa2page(pa)
 		if isblacklisted(uint32(pa)) {
-			//print("skipping pa ", hex(pa), "\n")
 			pagenfo.ref = 1
 			pagenfo.next_pageinfo = 0
 		} else {
-			//print("adding pa ", hex(pa), "to page free list\n")
 			pagenfo.next_pageinfo = nextfree
 			pagenfo.ref = 0
 			nextfree = uintptr(unsafe.Pointer(pagenfo))
@@ -791,8 +792,12 @@ func page_init() {
 
 //go:nosplit
 func page_alloc() *PageInfo {
+	//print("nextfree is ", hex(nextfree), "\n")
 	freepage := (*PageInfo)(unsafe.Pointer(nextfree))
 	nextfree = freepage.next_pageinfo
+	if nextfree == 0 {
+		throw("out of usable pages!!\n")
+	}
 	return freepage
 }
 
@@ -929,6 +934,9 @@ func map_kernel() {
 	//unfortunately this has to happen in order to boot other cpus
 	//map_region(uint32(0x0), uint32(0x0), 128*PGSIZE, MEM_TYPE_DEVICE)
 
+	//map 0. we need this for some reason
+	//map_region(uint32(0x0), uint32(0x0), PGSIZE, MEM_TYPE_DEVICE)
+
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
 	kernpgdir = (uintptr)(unsafe.Pointer(uintptr(l1_table)))
@@ -1021,36 +1029,34 @@ func hack_mmap(addr unsafe.Pointer, n uintptr, prot, flags, fd int32, off uint32
 	// Linux says zero them and re-map
 	for start := va; start < (va + uintptr(size)); start += uintptr(PGSIZE) {
 		pte := walk_pgdir(kernpgdir, uint32(start))
-		if *pte&0x2 > 0 {
-			print("pte ", hex(start>>PGSHIFT), " is already mapped to ", hex(*pte), "\n")
-			throw("error there is already an entry here")
-		}
 		page := page_alloc()
 		if page == nil {
 			throw("mmap_arm: out of memory\n")
 		}
 		pa := pageinfo2pa(page) & 0xFFF00000
 		*pte = uint32(pa) | 0x2 | MEM_TYPE_DEVICE
-		print("mapping physaddr ", hex(uint32(pa)), " to va ", hex(start), "\n")
 		memclrNoHeapPointers(unsafe.Pointer(start), uintptr(PGSIZE))
 	}
-	print("invallpages\n")
 	invallpages()
-	print("DMB\n")
 	DMB()
-	print("spunlock\n")
 	spunlock(maplock)
 	return unsafe.Pointer(va)
 }
 
 var timelock *Spinlock_t
 
+var ccount uint32 = 0
+
 //go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
 	splock(timelock)
 	//ticks_per_sec := 0x9502f900
 	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
-	ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
+	//print("read clock\n")
+	//ticks := ReadGenericClock()
+	//ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
+	ticks := ccount
+	ccount += 1000
 	nsec := (ticks * 5) >> 1
 	sec := 0
 	for ; nsec >= 1000000000; nsec -= 1000000000 {
@@ -1111,6 +1117,9 @@ func Getloc(loc uint32) uint32
 
 //go:nosplit
 func ReadClock(hi, low uintptr) int64
+
+//go:nosplit
+func ReadGenericClock() int64
 
 const Mpcorebase uintptr = uintptr(0xA00000)
 
@@ -1178,7 +1187,7 @@ func mp_init() {
 	}
 	cpustatus[0] = CPU_FULL
 
-	scu_enable()
+	//scu_enable()
 
 	//set the interrupt stack
 	isr_setup()
@@ -1186,15 +1195,15 @@ func mp_init() {
 	entry := getentry()
 	//replace the push lr at the start of entry with a nop
 	*((*uint32)(unsafe.Pointer(uintptr(entry)))) = NOP
-	//cpu1
-	*cpu1bootaddr = entry
-	*cpu1bootarg = uint32(isr_stack[1])
-	//cpu2
-	*cpu2bootaddr = entry
-	*cpu2bootarg = uint32(isr_stack[2])
-	//cpu3
-	*cpu3bootaddr = entry
-	*cpu3bootarg = uint32(isr_stack[3])
+	//	//cpu1
+	//	*cpu1bootaddr = entry
+	//	*cpu1bootarg = uint32(isr_stack[1])
+	//	//cpu2
+	//	*cpu2bootaddr = entry
+	//	*cpu2bootarg = uint32(isr_stack[2])
+	//	//cpu3
+	//	*cpu3bootaddr = entry
+	//	*cpu3bootarg = uint32(isr_stack[3])
 
 }
 
@@ -1298,7 +1307,9 @@ func cpuabort() {
 	zerobase_addr := uintptr(unsafe.Pointer(&zerobase))
 	print("zerobase addr is ", hex(zerobase_addr))
 	print("wait for JTAG connection\n")
-	WB_DEFAULT_UART.getchar()
+	for {
+	}
+	//WB_DEFAULT_UART.getchar()
 }
 
 //go:nosplit

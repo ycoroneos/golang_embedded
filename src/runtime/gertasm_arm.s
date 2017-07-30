@@ -18,6 +18,14 @@
 #define ACTLR_L2_PREFETCH $0x2
 #define ACTLR_FW $0x1
 
+TEXT runtime·ReadGenericClock(SB), NOSPLIT, $0
+//R1 will have upper 32
+//R2 will have lower 32
+WORD $0xec512f3 //mrrc p15, 3, R2, R1, c14e
+MOVW R1, ret_hi+4(FP)
+MOVW R2, ret_lo+0(FP)
+RET
+
 TEXT runtime·ReadClock(SB), NOSPLIT, $0
 	MOVW hi+0(FP), R1
 	MOVW lo+4(FP), R2

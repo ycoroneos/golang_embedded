@@ -324,35 +324,35 @@ func mallocinit() {
 			0,
 		}
 
-		//GERT will use the smallest arena size
-		if Armhackmode > 0 {
-			print("using smaller arena size for GERT\n")
-			print("\t bitmapSize : ", hex(bitmapSize), "\n")
-			print("\t spanSize : ", hex(spansSize), "\n")
-			print("\t arenaSize : ", hex(arenaSizes[2]), "\n")
-			print("\t PageSize : ", hex(_PageSize), "\n")
+		//		//GERT will use the smallest arena size
+		//		if Armhackmode > 0 {
+		//			print("using smaller arena size for GERT\n")
+		//			print("\t bitmapSize : ", hex(bitmapSize), "\n")
+		//			print("\t spanSize : ", hex(spansSize), "\n")
+		//			print("\t arenaSize : ", hex(arenaSizes[2]), "\n")
+		//			print("\t PageSize : ", hex(_PageSize), "\n")
+		//			p = round(firstmoduledata.end+(1<<18), 1<<20)
+		//			pSize = bitmapSize + spansSize + arenaSizes[3] + _PageSize
+		//			p = uintptr(sysReserve(unsafe.Pointer(p), pSize, &reserved))
+		//		} else {
+		for _, arenaSize := range arenaSizes {
+			// SysReserve treats the address we ask for, end, as a hint,
+			// not as an absolute requirement. If we ask for the end
+			// of the data segment but the operating system requires
+			// a little more space before we can start allocating, it will
+			// give out a slightly higher pointer. Except QEMU, which
+			// is buggy, as usual: it won't adjust the pointer upward.
+			// So adjust it upward a little bit ourselves: 1/4 MB to get
+			// away from the running binary image and then round up
+			// to a MB boundary.
 			p = round(firstmoduledata.end+(1<<18), 1<<20)
-			pSize = bitmapSize + spansSize + arenaSizes[2] + _PageSize
+			pSize = bitmapSize + spansSize + arenaSize + _PageSize
 			p = uintptr(sysReserve(unsafe.Pointer(p), pSize, &reserved))
-		} else {
-			for _, arenaSize := range arenaSizes {
-				// SysReserve treats the address we ask for, end, as a hint,
-				// not as an absolute requirement. If we ask for the end
-				// of the data segment but the operating system requires
-				// a little more space before we can start allocating, it will
-				// give out a slightly higher pointer. Except QEMU, which
-				// is buggy, as usual: it won't adjust the pointer upward.
-				// So adjust it upward a little bit ourselves: 1/4 MB to get
-				// away from the running binary image and then round up
-				// to a MB boundary.
-				p = round(firstmoduledata.end+(1<<18), 1<<20)
-				pSize = bitmapSize + spansSize + arenaSize + _PageSize
-				p = uintptr(sysReserve(unsafe.Pointer(p), pSize, &reserved))
-				if p != 0 {
-					break
-				}
+			if p != 0 {
+				break
 			}
 		}
+		//}
 		if p == 0 {
 			throw("runtime: cannot reserve arena virtual address space")
 		}

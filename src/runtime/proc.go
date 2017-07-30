@@ -401,6 +401,10 @@ var badmorestackg0Msg = "fatal: morestack on g0\n"
 func badmorestackg0() {
 	sp := stringStructOf(&badmorestackg0Msg)
 	write(2, sp.str, int32(sp.len))
+	if Armhackmode > 0 {
+		for {
+		}
+	}
 }
 
 var badmorestackgsignalMsg = "fatal: morestack on gsignal\n"
@@ -475,10 +479,19 @@ func schedinit() {
 	msigsave(_g_.m)
 	initSigmask = _g_.m.sigmask
 
-	goargs()
-	goenvs()
+	if Armhackmode > 0 {
+		print("fake args and envs\n")
+		argslice = make([]string, 1)
+		envs = make([]string, 1)
+	} else {
+		goargs()
+		goenvs()
+	}
 	parsedebugvars()
 	gcinit()
+	if Armhackmode > 0 {
+		print("past gc init\n")
+	}
 
 	sched.lastpoll = uint64(nanotime())
 	procs := ncpu
@@ -496,6 +509,9 @@ func schedinit() {
 		// Condition should never trigger. This code just serves
 		// to ensure runtime·buildVersion is kept in the resulting binary.
 		buildVersion = "unknown"
+	}
+	if Armhackmode > 0 {
+		print("done schedinit\n")
 	}
 }
 

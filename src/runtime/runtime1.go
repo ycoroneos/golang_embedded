@@ -78,6 +78,10 @@ func goargs() {
 }
 
 func goenvs_unix() {
+	if Armhackmode > 0 {
+		envs = make([]string, 0)
+		return
+	}
 	// TODO(austin): ppc64 in dynamic linking mode doesn't
 	// guarantee env[] will immediately follow argv. Might cause
 	// problems.
