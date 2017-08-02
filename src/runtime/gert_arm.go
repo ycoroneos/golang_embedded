@@ -620,12 +620,17 @@ func core_init() {
 * Turn on the 64bit ARM global timer.
 *It will never roll over unless gert runs for over 1000 years.
  */
+var ns_per_tick int64
+
 //go:nosplit
 func clock_init() {
-	global_timer.control = 0
-	global_timer.counter_lo = 0
-	global_timer.counter_hi = 0
-	global_timer.control = 1
+	freq := ReadGenericClockFreq()
+	if freq == 0 {
+		freq = 100E6
+	}
+	ns_per_tick = 1E9 / int64(freq)
+	print("clock freq ", freq, " ns per tick ", ns_per_tick, "\n")
+	ResetClock()
 }
 
 //go:nosplit
@@ -1048,16 +1053,16 @@ var timelock *Spinlock_t
 var ccount uint32 = 0
 
 //go:nosplit
+func ResetClock() {
+	ctrl := int32(1)
+	WriteGenericClockControl(ctrl)
+}
+
+//go:nosplit
 func clk_gettime(clock_type uint32, ts *timespec) {
 	splock(timelock)
-	//ticks_per_sec := 0x9502f900
-	//2**32 * (5/2) *1E9 ~=10.737 ==> 43/4
-	//print("read clock\n")
-	//ticks := ReadGenericClock()
-	//ticks := ReadClock(globaltimerbase+0x4, globaltimerbase+0x0)
-	ticks := ccount
-	ccount += 1000
-	nsec := (ticks * 5) >> 1
+	ticks := ReadGenericClock()
+	nsec := ticks * ns_per_tick
 	sec := 0
 	for ; nsec >= 1000000000; nsec -= 1000000000 {
 		sec += 1
@@ -1120,6 +1125,15 @@ func ReadClock(hi, low uintptr) int64
 
 //go:nosplit
 func ReadGenericClock() int64
+
+//go:nosplit
+func ReadGenericClockFreq() int32
+
+//go:nosplit
+func ReadGenericClockControl() int32
+
+//go:nosplit
+func WriteGenericClockControl(val int32)
 
 const Mpcorebase uintptr = uintptr(0xA00000)
 

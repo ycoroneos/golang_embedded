@@ -81,7 +81,7 @@ TEXT runtime·rt0_go(SB), NOSPLIT, $-4
 
 	BL runtime·core_init(SB)
 
-	// BL   runtime·clock_init(SB)
+	BL runtime·clock_init(SB)
 	BL runtime·mem_init(SB)
 	BL runtime·map_kernel(SB)
 

@@ -18,10 +18,26 @@
 #define ACTLR_L2_PREFETCH $0x2
 #define ACTLR_FW $0x1
 
+TEXT runtime·WriteGenericClockControl(SB), NOSPLIT, $0
+MOVW val+0(FP), R1
+WORD $0xee0e1f33        //mcr     15, 0, r1, cr14, cr3, {1}
+RET
+
+TEXT runtime·ReadGenericClockControl(SB), NOSPLIT, $0
+WORD $0xee1e1f33        //mrc     15, 0, r1, cr14, cr3, {1}
+MOVW R1, ret+0(FP)
+RET
+
+TEXT runtime·ReadGenericClockFreq(SB), NOSPLIT, $0
+WORD $0xee1e1f10        //mrc     15, 0, r1, cr14, cr0, {0}
+MOVW R0, ret+0(FP)
+RET
+
 TEXT runtime·ReadGenericClock(SB), NOSPLIT, $0
 //R1 will have upper 32
 //R2 will have lower 32
-WORD $0xec512f3 //mrrc p15, 3, R2, R1, c14e
+WORD $0xec512f1e        //mrrc    15, 1, r2, r1, cr14
+//WORD $0xec512f3 //mrrc p15, 3, R2, R1, c14e
 MOVW R1, ret_hi+4(FP)
 MOVW R2, ret_lo+0(FP)
 RET
