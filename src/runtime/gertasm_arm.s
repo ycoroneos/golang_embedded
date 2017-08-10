@@ -383,9 +383,6 @@ TEXT runtime·isr_setup(SB), NOSPLIT, $0
 	RET
 
 TEXT runtime·boot_any(SB), NOSPLIT, $0
-	MOVW $0x02020040, R0
-	MOVW $64, R1
-	MOVW R1, (R0)
 
 	// first read cpu id into r0
 	WORD $0xee100fb0                 // mrc	15, 0, r0, cr0, cr0, {5}
@@ -419,55 +416,45 @@ TEXT runtime·boot_any(SB), NOSPLIT, $0
 	MOVW R0, R13
 	WORD $0xe321f0d3 // msr	CPSR_c, #211	; 0xd3
 
-	CALL runtime·cleardcache(SB)
-	MOVW $0x02020040, R0
-	MOVW $65, R1
-	MOVW R1, (R0)
-
-	// enable data cache
-	WORD $0xee110f10 // mrc	15, 0, r0, cr1, cr0, {0}
-
-	ORR  SCTLR_ENABLE_DATA_CACHE, R0
-	ORR  SCTLR_ENABLE_BRANCH_PREDICTION, R0
-	ORR  SCTLR_ENABLE_INSTRUCTION_CACHE, R0
-	WORD $0xee010f10                        // mcr	15, 0, r0, cr1, cr0, {0}
-
-	// set SMP bit
-	// read actlr into r0
-	WORD $0xee110f30 // mrc	15, 0, r0, cr1, cr0, {1}
-
-	ORR  ACTLR_SMP, R0
-	ORR  ACTLR_L1_PREFETCH, R0
-	ORR  ACTLR_L2_PREFETCH, R0
-	ORR  ACTLR_FW, R0
-	WORD $0xee010f30           // mcr	15, 0, r0, cr1, cr0, {1}
-
-	// enable floating point
-	WORD $0xee111f50 // mrc	15, 0, r1, cr1, cr0, {2}
-	WORD $0xe381160f // orr	r1, r1, #15728640	; 0xf00000
-	WORD $0xee011f50 // mcr	15, 0, r1, cr1, cr0, {2}
-
-	MOVW $0, R1
-	WORD $0xee071f95     // mcr	15, 0, r1, cr7, cr5, {4}
-	MOVW $0x40000000, R3
-	WORD $0xeee83a10     // vmsr	fpexc, r3
-
-	MOVW $0x02020040, R0
-	MOVW $66, R1
-	MOVW R1, (R0)
+//	CALL runtime·cleardcache(SB)
+//
+//	// enable data cache
+//	WORD $0xee110f10 // mrc	15, 0, r0, cr1, cr0, {0}
+//
+//	ORR  SCTLR_ENABLE_DATA_CACHE, R0
+//	ORR  SCTLR_ENABLE_BRANCH_PREDICTION, R0
+//	ORR  SCTLR_ENABLE_INSTRUCTION_CACHE, R0
+//	WORD $0xee010f10                        // mcr	15, 0, r0, cr1, cr0, {0}
+//
+//	// set SMP bit
+//	// read actlr into r0
+//	WORD $0xee110f30 // mrc	15, 0, r0, cr1, cr0, {1}
+//
+//	ORR  ACTLR_SMP, R0
+//	ORR  ACTLR_L1_PREFETCH, R0
+//	ORR  ACTLR_L2_PREFETCH, R0
+//	ORR  ACTLR_FW, R0
+//	WORD $0xee010f30           // mcr	15, 0, r0, cr1, cr0, {1}
+//
+//	// enable floating point
+//	WORD $0xee111f50 // mrc	15, 0, r1, cr1, cr0, {2}
+//	WORD $0xe381160f // orr	r1, r1, #15728640	; 0xf00000
+//	WORD $0xee011f50 // mcr	15, 0, r1, cr1, cr0, {2}
+//
+//	MOVW $0, R1
+//	WORD $0xee071f95     // mcr	15, 0, r1, cr7, cr5, {4}
+//	MOVW $0x40000000, R3
+//	WORD $0xeee83a10     // vmsr	fpexc, r3
+//
+//	MOVW $0x02020040, R0
+//	MOVW $66, R1
+//	MOVW R1, (R0)
 
 	// load vectors
 	//	CALL runtime·loadvbar(SB)
 
 	// load the page tables
 	CALL runtime·loadttbr0(SB)
-
-	MOVW $0x02020040, R0
-	MOVW $67, R1
-	MOVW R1, (R0)
-	MOVW $0x02020040, R0
-	MOVW $68, R1
-	MOVW R1, (R0)
 
 	// enter holding pen
 	CALL runtime·mp_pen(SB)

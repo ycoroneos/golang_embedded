@@ -905,6 +905,10 @@ func map_kernel() {
 
 	//install the kernel page table
 
+	//map the ROM
+	map_region(0x0, 0x0, 128*PGSIZE, MEM_TYPE_DEVICE)
+	blacklist_range(MemRange{0x0, 0x0 + (128 * PGSIZE)})
+
 	//map the uart
 	//map_region(0x02000000, 0x02000000, PGSIZE, MEM_TYPE_DEVICE)
 	map_region(0x09000000, 0x09000000, PGSIZE, MEM_TYPE_DEVICE)
@@ -941,6 +945,10 @@ func map_kernel() {
 
 	//map 0. we need this for some reason
 	//map_region(uint32(0x0), uint32(0x0), PGSIZE, MEM_TYPE_DEVICE)
+
+	//map the GIC
+	map_region(0x8000000, 0x8000000, 2*PGSIZE, MEM_TYPE_DEVICE)
+	blacklist_range(MemRange{0x8000000, 0x8000000 + (2 * PGSIZE)})
 
 	loadvbar(unsafe.Pointer(vectab))
 	loadttbr0(unsafe.Pointer(uintptr(l1_table)))
@@ -1182,7 +1190,7 @@ func isr_setup()
 //go:nosplit
 func mp_init() {
 
-	//SMP bring up is described in section 5.3.4 of DDI 0407G
+	//SMP bring up is described in section 5.3.4 of DDI 0407G but it is not specific to XVISOR
 
 	//set up stacks, they must be 8 byte aligned
 
@@ -1209,6 +1217,7 @@ func mp_init() {
 	entry := getentry()
 	//replace the push lr at the start of entry with a nop
 	*((*uint32)(unsafe.Pointer(uintptr(entry)))) = NOP
+
 	//	//cpu1
 	//	*cpu1bootaddr = entry
 	//	*cpu1bootarg = uint32(isr_stack[1])
@@ -1246,7 +1255,7 @@ type GIC_cpu_map struct {
 	cpu_interface_dentification_register uint32
 }
 
-var gic_cpu *GIC_cpu_map = (*GIC_cpu_map)(unsafe.Pointer(uintptr(Getmpcorebase() + 0x100)))
+var gic_cpu *GIC_cpu_map = (*GIC_cpu_map)(unsafe.Pointer(uintptr(0x8010000)))
 
 //go:nosplit
 func trampoline() {
@@ -1260,19 +1269,33 @@ func trampoline() {
 	thread_schedule()
 }
 
+////go:nosplit
+//func Release(ncpu uint) {
+//	//boot n cpus
+//	start := uint(1)
+//	for cpu := start; cpu < start+ncpu; cpu++ {
+//		print("boot cpu ", cpu, " ... ")
+//		for *scr&(0x1<<(13+cpu)|0x1<<(17+cpu)) > 0 {
+//		}
+//		*scr |= 0x1 << (21 + cpu)
+//		for cpustatus[cpu] == CPU_WFI {
+//		}
+//		print("done!\n")
+//	}
+//}
+
 //go:nosplit
-func Release(ncpu uint) {
-	//boot n cpus
-	start := uint(1)
-	for cpu := start; cpu < start+ncpu; cpu++ {
-		print("boot cpu ", cpu, " ... ")
-		for *scr&(0x1<<(13+cpu)|0x1<<(17+cpu)) > 0 {
-		}
-		*scr |= 0x1 << (21 + cpu)
+func Release(ncpu int) {
+	//boot all cpus
+	entry := getentry()
+	addr := ((*uint32)(unsafe.Pointer(uintptr(0x1c010030))))
+	*addr = entry
+	//wait for them to acknowledge
+	for cpu := 0; cpu < ncpu; cpu++ {
 		for cpustatus[cpu] == CPU_WFI {
 		}
-		print("done!\n")
 	}
+	print("done!\n")
 }
 
 //
